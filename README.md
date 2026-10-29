@@ -5,9 +5,14 @@ A static page that draws an object from toy building blocks, with TypeSafe's Jev
 typed questions about an image with probabilities and gives no reasons.
 
 Blocks are a square (A x A), a double square (2A x A), a half square (legs A,
-long side sqrt(2) A) and a roof (base 2A, height A), on a 12A x 12A canvas. They
-turn in quarter turns and only meet flat face to flat face, overlapping by at
-least A/2. Slanted faces don't attach.
+long side sqrt(2) A) and a roof (base 2A, height A), on a 12A x 12A canvas, at
+most 8 per drawing. Blocks meet face to face: two faces on the same line,
+overlapping by at least A/2. Triangles turn in quarter turns; squares and double
+squares can also sit diagonally (45 degrees). Since the only diagonal faces are a
+triangle's slanted sides, a diagonal block attaches to a triangle's slanted face
+or to another diagonal block, and a triangle's slanted face leads back to
+straight blocks. After each change the drawing is recentred on the canvas, so
+it can grow in any direction until it spans 12A.
 
 The drawing evolves: 10 drawings at once. Each generation, Jev sees them side
 by side in a 5 x 2 grid of framed panels (shuffled every generation) and answers
@@ -19,15 +24,17 @@ at least as high), so the population never loses its best drawing. The others
 are children of parents drawn in proportion to fitness: half by crossover (one
 parent's blocks on one side of a random vertical or horizontal cut, the other
 parent's on the other side, keeping the largest connected group), half by
-mutation (1-3 blocks added, or 30% of the time one block taken away while the
-rest stays connected). A run stops at P > 0.66 or after 30 generations, and its
+mutation (1-3 blocks added up to the cap of 8, or 30% of the time one block
+taken away while the rest stays connected). A run stops at P > 0.66 or after 30 generations, and its
 result is the best drawing.
 
 ## Web app
 
-[public/index.html](public/index.html) is the whole app. It replays the canned
-runs for house, rocket and flagpole with flag step by step, and draws any object you type,
-live, with your own OpenRouter key. The key goes straight from the browser to
+[public/index.html](public/index.html) is the whole app. It replays canned runs
+step by step, for objects (house, rocket, flagpole with flag) and for the
+alphabet (the best of 3 runs per capital letter), and draws any object you
+type, live, with your own OpenRouter key. `#alphabet` in the URL opens the
+alphabet. The key goes straight from the browser to
 openrouter.ai.
 
 GitHub Pages serves `public/` via
@@ -39,32 +46,44 @@ GitHub Pages serves `public/` via
 ```bash
 cp .env.template .env                 # then paste an OpenRouter key
 uv run run_examples.py genetic 8      # 8 runs each of house, rocket, flagpole with flag
+uv run run_examples.py alphabet 3     # 3 runs each of "capital letter A" ... "capital letter Z"
 uv run run_examples.py genetic-nox 8  # without crossover, for comparison
 uv run run_examples.py genetic 3 dog  # or: mode, runs per object, objects
 ```
 
-The default genetic runs go to `public/presets-genetic.js`; everything else goes
-to `results/presets-<mode>[-<objects>].json`. Final drawings land in
+The default genetic runs go to `public/presets-genetic.js`. The alphabet's best
+run per letter goes to `public/presets-alphabet.js`, all its runs to
+`results/presets-alphabet-all.json`. Everything else goes to
+`results/presets-<mode>[-<objects>].json`. Final drawings land in
 `results/<mode>/`.
 
 ## Results (2026-10-29, `typesafe/jev-1.14`)
 
-Canned runs, 12A x 12A canvas, 8 runs per target:
+Canned runs: 12A x 12A canvas, at most 8 blocks, diagonal blocks, recentring.
+
+**Objects**, 8 runs each:
 
 | target             | final P   | P > 0.66 | named correctly |
 |--------------------|-----------|----------|-----------------|
-| house              | 0.45-0.73 | 4 of 8   | 6 of 8          |
-| rocket             | 0.58-0.76 | 6 of 8   | 8 of 8          |
-| flagpole with flag | 0.50-0.73 | 1 of 8   | 2 of 8          |
-| total              |           | 11 of 24 | 16 of 24        |
+| house              | 0.44-0.80 | 6 of 8   | 7 of 8          |
+| rocket             | 0.60-0.72 | 3 of 8   | 8 of 8          |
+| flagpole with flag | 0.47-0.78 | 1 of 8   | 6 of 8          |
+| total              |           | 10 of 24 | 21 of 24        |
 
-807 Jev calls, $0.045. "Named correctly" comes from
-[experiments/confusion.py](experiments/confusion.py) (see below). The flagpoles
-do look like a pole with a triangular flag, but Jev names 6 of 8 of them
-"rocket": a tall bar with a triangle on top reads as both. Some rockets are
-messy piles that still pass, since random drawings come out as rocket 12 times
-in 24. On the same canvas, boat reached P > 0.66 in 4 of 8 runs (0 of 8 on the
-8A canvas).
+915 Jev calls, $0.050. "Named correctly" comes from
+[experiments/confusion.py](experiments/confusion.py) (see below). Before
+diagonals and recentring, Jev named only 2-3 of 8 flagpoles correctly and called
+the rest "rocket". Random drawings still come out as rocket 9 times in 24, so
+part of the rocket score comes free.
+
+**Alphabet**, 3 runs per capital letter, the best shown in the app.
+[experiments/alphabet_confusion.py](experiments/alphabet_confusion.py) asks Jev
+which letter (A-Z or none) each final drawing shows. It reads 38 of 78 runs as
+the intended letter, and 14 of the 26 best runs: F G I J K L S T U V W X Y Z.
+Letters made of straight strokes work; round ones (B, D, O, Q) and busy ones
+(E, H, M) don't. Random block drawings come out as K 13 times in 26, so K comes
+free. Diagonals and recentring raised the correct reads from 26 to 38 of 78.
+3491 Jev calls, $0.19.
 
 The comparisons below ran on the earlier 8A x 8A canvas with house, rocket and
 boat. Final P, and how many runs reached P > 0.66. "Random walk"

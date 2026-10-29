@@ -34,12 +34,7 @@ QUESTION = {
 
 
 def with_points(b):
-    w, h, _ = rx.BLOCKS[b["kind"]]
-    points = rx.outline(b["kind"], w, h)
-    for _ in range(b["rot"]):
-        points, w, h = [[h - py, px] for px, py in points], h, w
-    x, y = b["box"][:2]
-    return {**b, "points": [[(x + px) / rx.GRID, (y + py) / rx.GRID] for px, py in points]}
+    return {**b, "points": [[x / rx.GRID, y / rx.GRID] for x, y in b["pts"]]}
 
 
 def final(run):

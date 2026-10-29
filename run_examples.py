@@ -5,12 +5,17 @@
 """Precompute drawing runs like the web app does and write public/presets-genetic.js.
 
 Usage: uv run run_examples.py [mode] [runs_per_object] [object ...]
-Modes: `genetic` (default), or `genetic-nox` (without crossover, for comparison).
-Defaults: 5 runs of each object in OBJECTS. Only the default genetic runs go to
-public/; anything else goes to results/presets-<mode>[-<objects>].json.
+Modes: `genetic` (default, the objects in OBJECTS), `alphabet` (the same for the
+capital letters A-Z), or `genetic-nox` (objects without crossover, for
+comparison). Defaults: 5 runs of each object. Default `genetic` runs go to
+public/presets-genetic.js; default `alphabet` runs put the best run per letter
+in public/presets-alphabet.js and all runs in results/presets-alphabet-all.json.
+Anything else goes to results/presets-<mode>[-<objects>].json.
 
 Drawings are made of toy building blocks (square, double square, half square,
-roof), turned in quarter turns and placed flat face to flat face.
+roof), placed face to face. Triangles turn in quarter turns; squares and double
+squares can also sit diagonally, against a triangle's slanted face or another
+diagonal block.
 
 A run evolves POP drawings at once. Each generation shows them side by
 side in a grid and asks Jev a `choice` question ("which panel shows a
@@ -25,6 +30,7 @@ result is the pick with the highest P over all generations.
 import base64
 import io
 import json
+import math
 import os
 import random
 import sys
@@ -44,20 +50,25 @@ TARGET = 0.66
 FILL = (0, 0, 0, 178)  # black at 70% opacity, same as the web app
 # distinct shapes that score low on random drawings but reachably high on good ones (experiments/screen_targets.py)
 OBJECTS = ["house", "rocket", "flagpole with flag"]
+LETTERS = [f"capital letter {c}" for c in "ABCDEFGHIJKLMNOPQRSTUVWXYZ"]
+SETS = {"genetic": OBJECTS, "genetic-nox": OBJECTS, "alphabet": LETTERS}
 GRID = 24  # blocks live on a GRID x GRID canvas in grid units; a block side A is 2 units
-# kind: (width, height, flat faces as [top, right, bottom, left]) when not rotated
+# kind: unrotated outline in grid units, all wound the same way so that faces that
+# touch run in opposite directions, and the turns it may take in 45 degree steps
+# (squares and double squares can sit diagonally; triangles only in quarter turns)
 BLOCKS = {
-    "square": (2, 2, [1, 1, 1, 1]),  # A x A
-    "double": (4, 2, [1, 1, 1, 1]),  # 2A x A
-    "half": (2, 2, [0, 0, 1, 1]),  # half square: legs A on the bottom and left
-    "roof": (4, 2, [0, 0, 1, 0]),  # base 2A, height A
+    "square": ([(0, 0), (2, 0), (2, 2), (0, 2)], range(8)),  # A x A
+    "double": ([(0, 0), (4, 0), (4, 2), (0, 2)], range(8)),  # 2A x A
+    "half": ([(0, 0), (2, 2), (0, 2)], range(0, 8, 2)),  # half square: legs A, long side sqrt(2) A
+    "roof": ([(0, 2), (2, 0), (4, 2)], range(0, 8, 2)),  # base 2A, height A
 }
+EPS = 1e-4
 
 POP = 10  # drawings per generation
 GENERATIONS = 30
 P_CROSS = 0.5  # chance that a child comes from crossover instead of mutation
 P_REMOVE = 0.3  # chance that a mutation takes a block away instead of adding 1-3
-MAX_BLOCKS = 24
+MAX_BLOCKS = 8  # hard cap per drawing
 COLS, CELL, BORDER = 5, 200, 4  # grid sheet for the choice question, in pixels
 
 
@@ -66,62 +77,86 @@ def question(obj):
     return {"type": "noul", "instructions": f"The image shows {article} {obj}."}
 
 
-def outline(kind, w, h):
-    """Unrotated block outline in block units, relative to the top-left corner of its box."""
-    if kind == "roof":
-        return [[0, h], [w / 2, 0], [w, h]]
-    if kind == "half":
-        return [[0, 0], [0, h], [w, h]]
-    return [[0, 0], [w, 0], [w, h], [0, h]]
+def turned(kind, k):
+    """The block's outline after k turns of 45 degrees (clockwise on screen) about its first corner."""
+    c, s = math.cos(k * math.pi / 4), math.sin(k * math.pi / 4)
+    return [(x * c - y * s, x * s + y * c) for x, y in BLOCKS[kind][0]]
 
 
-def flat(block, side):
-    """Whether a placed block has a flat face on side 0-3 (top, right, bottom, left)."""
-    return BLOCKS[block["kind"]][2][(side - block["rot"]) % 4]
+def faces(pts):
+    return list(zip(pts, pts[1:] + pts[:1]))
+
+
+def unit(p, q):
+    d = math.dist(p, q)
+    return (q[0] - p[0]) / d, (q[1] - p[1]) / d, d
 
 
 def overlap(a, b):
-    ax, ay, aw, ah = a["box"]
-    bx, by, bw, bh = b["box"]
-    return ax < bx + bw and bx < ax + aw and ay < by + bh and by < ay + ah
+    """Whether two convex outlines overlap by more than a touch (separating axis test)."""
+    for (x1, y1), (x2, y2) in faces(a) + faces(b):
+        nx, ny = y1 - y2, x2 - x1
+        pa, pb = [x * nx + y * ny for x, y in a], [x * nx + y * ny for x, y in b]
+        if max(pa) <= min(pb) + EPS or max(pb) <= min(pa) + EPS:
+            return False
+    return True
 
 
 def random_block(rng, kept):
-    """A block turned by 0-3 quarter turns, flat face to flat face with a random kept block.
+    """A block flush against a face of a random kept block, overlapping it by at least A/2.
 
-    Returns None if no free spot turns up.
+    Faces only meet when they lie on the same line, so a diagonal block can only
+    sit on a triangle's slanted face or on another diagonal block. The first block
+    sits straight, near the centre. Returns None if no free spot turns up.
     """
     for _ in range(1000):
-        kind, rot = rng.choice(list(BLOCKS)), rng.randrange(4)
-        w, h, _ = BLOCKS[kind]
-        points = outline(kind, w, h)
-        for _ in range(rot):  # quarter turn clockwise
-            points, w, h = [[h - py, px] for px, py in points], h, w
-        new = {"kind": kind, "rot": rot}
+        kind = rng.choice(list(BLOCKS))
+        k = rng.choice(BLOCKS[kind][1])
+        pts = turned(kind, k)
         if kept:
-            a = rng.choice(kept)
-            ax, ay, aw, ah = a["box"]
-            side = rng.randrange(4)
-            if not flat(a, side) or not flat(new, (side + 2) % 4):
+            p1, p2 = rng.choice(faces(rng.choice(kept)["pts"]))
+            ux, uy, la = unit(p1, p2)
+            match = [(q1, q2) for q1, q2 in faces(pts) if unit(q1, q2)[0] * ux + unit(q1, q2)[1] * uy < -1 + EPS]
+            if not match:
                 continue
-            if side in (0, 2):  # stack above or below, overlapping by at least one unit
-                x, y = rng.randint(ax - w + 1, ax + aw - 1), ay - h if side == 0 else ay + ah
-            else:  # place left or right
-                x, y = ax + aw if side == 1 else ax - w, rng.randint(ay - h + 1, ay + ah - 1)
+            q1, q2 = rng.choice(match)
+            lb = math.dist(q1, q2)
+            t = 1 - lb + rng.randrange(int(la + lb - 2 + EPS) + 1)  # q2 sits t along the face, in steps of A/2
+            dx, dy = p1[0] + t * ux - q2[0], p1[1] + t * uy - q2[1]
         else:
-            x, y = rng.randint(GRID // 2 - 4, GRID // 2 + 4 - w), rng.randint(GRID // 2 - 4, GRID // 2 + 4 - h)  # near the centre
-        new["box"] = [x, y, w, h]
-        if x < 0 or y < 0 or x + w > GRID or y + h > GRID or any(overlap(new, b) for b in kept):
+            if k % 2:
+                continue
+            xs, ys = [x for x, _ in pts], [y for _, y in pts]
+            w, h = round(max(xs) - min(xs)), round(max(ys) - min(ys))
+            dx = rng.randint(GRID // 2 - 4, GRID // 2 + 4 - w) - min(xs)
+            dy = rng.randint(GRID // 2 - 4, GRID // 2 + 4 - h) - min(ys)
+        pts = [(round(x + dx, 6), round(y + dy, 6)) for x, y in pts]
+        # the drawing is recentred after each change, so only its total size must fit the canvas
+        xs, ys = zip(*(pt for b in kept for pt in b["pts"]), *pts)
+        if max(xs) - min(xs) > GRID + EPS or max(ys) - min(ys) > GRID + EPS or any(overlap(pts, b["pts"]) for b in kept):
             continue
-        new["points"] = [[round((x + px) / GRID, 4), round((y + py) / GRID, 4)] for px, py in points]
-        return new
+        return block(kind, k, pts)
     return None
 
 
-def random_blocks(rng, kept):
-    """1-3 blocks, each against a kept block or an earlier one of the group."""
+def block(kind, k, pts):
+    return {"kind": kind, "rot": k, "pts": pts, "points": [[x / GRID, y / GRID] for x, y in pts]}
+
+
+def recenter(blocks):
+    """Shift the drawing by whole grid units so its bounding box sits in the middle of the canvas."""
+    xs, ys = zip(*(pt for b in blocks for pt in b["pts"]))
+    dx = min(max(round(GRID / 2 - (min(xs) + max(xs)) / 2), -min(xs)), GRID - max(xs))
+    dy = min(max(round(GRID / 2 - (min(ys) + max(ys)) / 2), -min(ys)), GRID - max(ys))
+    if not dx and not dy:
+        return blocks
+    return [block(b["kind"], b["rot"], [(round(x + dx, 6), round(y + dy, 6)) for x, y in b["pts"]]) for b in blocks]
+
+
+def random_blocks(rng, kept, room=3):
+    """1-3 blocks (at most room), each against a kept block or an earlier one of the group."""
     group = []
-    for _ in range(rng.randint(1, 3)):
+    for _ in range(min(rng.randint(1, 3), room)):
         block = random_block(rng, kept + group)
         if block is None:
             break
@@ -159,15 +194,17 @@ def decide(client, img, questions):
 
 
 def touching(a, b):
-    """Whether two blocks meet flat face to flat face."""
-    ax, ay, aw, ah = a["box"]
-    bx, by, bw, bh = b["box"]
-    side = None
-    if ay < by + bh and by < ay + ah:  # overlap vertically: left or right neighbours
-        side = 1 if ax + aw == bx else 3 if bx + bw == ax else None
-    if side is None and ax < bx + bw and bx < ax + aw:  # overlap horizontally: above or below
-        side = 2 if ay + ah == by else 0 if by + bh == ay else None
-    return side is not None and flat(a, side) and flat(b, (side + 2) % 4)
+    """Whether two blocks meet face to face: faces on the same line, running opposite ways, overlapping."""
+    for p1, p2 in faces(a["pts"]):
+        ux, uy, la = unit(p1, p2)
+        for q1, q2 in faces(b["pts"]):
+            vx, vy, _ = unit(q1, q2)
+            if ux * vx + uy * vy > -1 + EPS or abs(ux * (q1[1] - p1[1]) - uy * (q1[0] - p1[0])) > EPS:
+                continue
+            s1, s2 = sorted(((q[0] - p1[0]) * ux + (q[1] - p1[1]) * uy for q in (q1, q2)))
+            if min(la, s2) - max(0, s1) > EPS:
+                return True
+    return False
 
 
 def components(blocks):
@@ -187,13 +224,13 @@ def components(blocks):
 
 
 def mutate(rng, parent):
-    """Add 1-3 blocks or, sometimes, take away one block whose removal keeps the rest connected."""
+    """Add 1-3 blocks (up to MAX_BLOCKS) or, sometimes, take away one whose removal keeps the rest connected."""
     if len(parent) > 1 and (len(parent) >= MAX_BLOCKS or rng.random() < P_REMOVE):
         removable = [i for i in range(len(parent)) if len(components(parent[:i] + parent[i + 1 :])) == 1]
         if removable:
             i = rng.choice(removable)
-            return parent[:i] + parent[i + 1 :], "remove"
-    return parent + random_blocks(rng, parent), "add"
+            return recenter(parent[:i] + parent[i + 1 :]), "remove"
+    return recenter(parent + random_blocks(rng, parent, MAX_BLOCKS - len(parent))), "add"
 
 
 def cross(rng, a, b):
@@ -202,17 +239,17 @@ def cross(rng, a, b):
     b's blocks that overlap a's are dropped, and only the largest connected group stays.
     """
     axis = rng.randrange(2)  # 0: cut across x (left/right halves), 1: across y (top/bottom)
-    mid = lambda blk: blk["box"][axis] + blk["box"][axis + 2] / 2  # noqa: E731
+    mid = lambda blk: sum(pt[axis] for pt in blk["pts"]) / len(blk["pts"])  # noqa: E731
     cut = rng.uniform(min(map(mid, a + b)), max(map(mid, a + b)))
     child = [blk for blk in a if mid(blk) < cut]
-    child += [blk for blk in b if mid(blk) >= cut and not any(overlap(blk, c) for c in child)]
+    child += [blk for blk in b if mid(blk) >= cut and not any(overlap(blk["pts"], c["pts"]) for c in child)]
     if not child:
         return list(a)
-    return [child[i] for i in max(components(child), key=len)]
+    return recenter([child[i] for i in max(components(child), key=len)])
 
 
 def same(a, b):
-    key = lambda blocks: sorted((blk["kind"], blk["rot"], *blk["box"]) for blk in blocks)  # noqa: E731
+    key = lambda blocks: sorted((blk["kind"], blk["rot"], *(round(v, 3) for pt in blk["pts"] for v in pt)) for blk in blocks)  # noqa: E731
     return key(a) == key(b)
 
 
@@ -222,7 +259,7 @@ def child_of(rng, cands, probs, p_cross):
     a, b = cands[i]["shapes"], cands[j]["shapes"]
     if rng.random() < p_cross and not same(a, b):
         shapes = cross(rng, a, b)
-        if not same(shapes, a) and not same(shapes, b):
+        if len(shapes) <= MAX_BLOCKS and not same(shapes, a) and not same(shapes, b):
             return {"shapes": shapes, "parent": i, "parent2": j, "op": "cross"}
     shapes, op = mutate(rng, a)
     return {"shapes": shapes, "parent": i, "op": op}
@@ -257,7 +294,7 @@ def evolve(client, mode, obj, seed):
     """Genetic run: Jev picks among POP block drawings per generation; the pick is the fitness."""
     rng = random.Random(seed)
     p_cross = 0 if mode == "genetic-nox" else P_CROSS
-    cands = [{"shapes": random_blocks(rng, []), "parent": None, "op": "seed"} for _ in range(POP)]
+    cands = [{"shapes": recenter(random_blocks(rng, [])), "parent": None, "op": "seed"} for _ in range(POP)]
     gens, p, cost, calls, stop = [], -1.0, 0.0, 0, "generations"
     best_p, final = -1.0, None  # best noul so far and its drawing
     for _ in range(GENERATIONS):
@@ -290,24 +327,30 @@ def evolve(client, mode, obj, seed):
     name = Path("results") / mode / f"{obj.replace(' ', '-')}_{seed}"
     render(final).save(f"{name}_{p:.2f}.png")
     sheet([c["shapes"] for c in gens[-1]["candidates"]]).save(f"{name}_sheet.png")
-    # blocks are stored without points; the web app rebuilds them from kind, rot and box
+    # blocks are stored by their outline in grid units; the web app scales them to the canvas
     for g in gens:
         g["candidates"] = [
-            {**c, "shapes": [{k: b[k] for k in ("kind", "rot", "box")} for b in c["shapes"]]} for c in g["candidates"]
+            {**c, "shapes": [{"kind": b["kind"], "rot": b["rot"], "pts": [[round(x, 2), round(y, 2)] for x, y in b["pts"]]}
+                             for b in c["shapes"]]}
+            for c in g["candidates"]
         ]
     return {"object": obj, "seed": seed, "model": resp.get("model", MODEL), "p": p, "stop": stop, "cost": cost, "calls": calls, "generations": gens}
 
 
 def main(mode="genetic", runs="5", *objects):
     (Path("results") / mode).mkdir(parents=True, exist_ok=True)
-    jobs = [(mode, obj, seed) for obj in objects or OBJECTS for seed in range(int(runs))]
+    jobs = [(mode, obj, seed) for obj in objects or SETS[mode] for seed in range(int(runs))]
     headers = {"Authorization": f"Bearer {os.environ['OPENROUTER_API_KEY']}"}
     with httpx.Client(headers=headers) as client, ThreadPoolExecutor(4) as pool:
         presets = list(pool.map(lambda job: evolve(client, *job), jobs))
-    if mode == "genetic" and not objects:  # the app's canned runs
+    if mode in ("genetic", "alphabet") and not objects:  # the app's canned runs
+        shown = presets
+        if mode == "alphabet":  # only the best run per letter, to keep the page small
+            Path(f"results/presets-{mode}-all.json").write_text(json.dumps(presets, separators=(",", ":")))
+            shown = [max((r for r in presets if r["object"] == o), key=lambda r: r["p"]) for o in LETTERS]
         Path(f"public/presets-{mode}.js").write_text(
             "// Generated by run_examples.py; canned drawing runs.\nvar PRESETS = PRESETS || {};\n"
-            f"PRESETS.{mode} = {json.dumps(presets, separators=(',', ':'))};\n"
+            f"PRESETS.{mode} = {json.dumps(shown, separators=(',', ':'))};\n"
         )
     else:
         tag = "".join(f"-{o.replace(' ', '_')}" for o in objects)

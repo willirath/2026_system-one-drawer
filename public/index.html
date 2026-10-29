@@ -33,19 +33,23 @@
   .gallery figure.sel canvas { outline: 3px solid var(--yes); }
   .row-label { font-weight: 600; margin: 0.75rem 0 0.25rem; }
   #sheet { width: 100%; height: auto; aspect-ratio: 5 / 2; margin-top: 0.75rem; }
+  #sets { display: flex; gap: 1.5rem; margin-bottom: 0.25rem; }
+  #sets label { margin: 0; cursor: pointer; }
+  .gallery.letters { grid-template-columns: repeat(7, 1fr); }
 </style>
 </head>
 <body>
 <h1>✏️ System-One Drawer</h1>
 <p class="small">Draws an object from toy building blocks (square A×A, double square 2A×A, half square, roof with
-base 2A and height A), turned in quarter turns and placed flat face to flat face. Slanted faces don't attach. TypeSafe's
-Jev (via OpenRouter), a fast decision model, is the only judge.</p>
+base 2A and height A), placed face to face. Triangles turn in quarter turns; squares and double squares can also
+sit diagonally, against a triangle's slanted face or another diagonal block. TypeSafe's Jev (via OpenRouter), a
+fast decision model, is the only judge.</p>
 <p class="small">It evolves 10 drawings at once. Each generation, Jev sees them side by side in a grid and answers a
 <code>choice</code> question: "Which panel shows a(n) &lt;object&gt;?" Its probabilities are the fitness. For the
 pick, Jev also answers a <code>noul</code> question: "The image shows a(n) &lt;object&gt;." That P tracks progress.
 The pick and the best drawing so far (highest P) carry over unchanged. The others are children of parents drawn by
 fitness: half by crossover (one parent's blocks on one side of a random cut, the other's on the other side), half
-by mutation (1-3 blocks added, or one taken away). A run stops at P &gt; 0.66 or after 30 generations and shows
+by mutation (1-3 blocks added, or one taken away). A drawing has at most 8 blocks. A run stops at P &gt; 0.66 or after 30 generations and shows
 the best drawing.</p>
 
 <canvas id="view" width="384" height="384"></canvas>
@@ -63,6 +67,10 @@ the best drawing.</p>
 <p id="note" class="small"></p>
 
 <h2>Canned drawings</h2>
+<div id="sets">
+  <label><input type="radio" name="set" value="genetic" checked> Objects</label>
+  <label><input type="radio" name="set" value="alphabet"> Alphabet</label>
+</div>
 <div id="gallery"></div>
 
 <h2>Draw your own</h2>
@@ -72,7 +80,7 @@ and costs well under one cent.</p>
 <input id="object" type="text" value="house" list="ideas">
 <datalist id="ideas"><option value="house"><option value="rocket"><option value="flagpole with flag">
 <option value="house and tree"><option value="man with hat"><option value="boat"><option value="tower"><option value="castle">
-<option value="robot"><option value="elephant"></datalist>
+<option value="robot"><option value="elephant"><option value="capital letter A"><option value="capital letter R"></datalist>
 <label for="key">OpenRouter API key</label>
 <input id="key" type="password" placeholder="sk-or-v1-..." autocomplete="off">
 <label><input id="remember" type="checkbox"> remember key in this browser</label>
@@ -85,21 +93,24 @@ and costs well under one cent.</p>
 Code: <a href="https://github.com/willirath/2026_system-one-drawer">github.com/willirath/2026_system-one-drawer</a></p>
 
 <script src="presets-genetic.js"></script>
+<script src="presets-alphabet.js"></script>
 <script>
 const MODEL = "typesafe/jev-1.14";
 const SIZE = 384, TARGET = 0.66;
 const KEPT = "rgba(0,0,0,0.7)";
 // Blocks live on a GRID x GRID canvas in grid units; a block side A is 2 units.
-// kind: [width, height, flat faces as [top, right, bottom, left]] when not rotated
-const GRID = 24;
+// kind: [unrotated outline in grid units, all wound the same way so that faces that touch run in
+// opposite directions; the turns it may take in 45 degree steps]. Squares and double squares can
+// sit diagonally; triangles only take quarter turns.
+const GRID = 24, EPS = 1e-4;
 const BLOCKS = {
-  square: [2, 2, [1, 1, 1, 1]],  // A x A
-  double: [4, 2, [1, 1, 1, 1]],  // 2A x A
-  half: [2, 2, [0, 0, 1, 1]],    // half square: legs A on the bottom and left
-  roof: [4, 2, [0, 0, 1, 0]],    // base 2A, height A
+  square: [[[0, 0], [2, 0], [2, 2], [0, 2]], [0, 1, 2, 3, 4, 5, 6, 7]],  // A x A
+  double: [[[0, 0], [4, 0], [4, 2], [0, 2]], [0, 1, 2, 3, 4, 5, 6, 7]],  // 2A x A
+  half: [[[0, 0], [2, 2], [0, 2]], [0, 2, 4, 6]],                       // half square: legs A, long side sqrt(2) A
+  roof: [[[0, 2], [2, 0], [4, 2]], [0, 2, 4, 6]],                       // base 2A, height A
 };
 // drawings per generation, and the grid sheet Jev sees, in pixels
-const POP = 10, GENERATIONS = 30, P_CROSS = 0.5, P_REMOVE = 0.3, MAX_BLOCKS = 24, COLS = 5, CELL = 200, BORDER = 4;
+const POP = 10, GENERATIONS = 30, P_CROSS = 0.5, P_REMOVE = 0.3, MAX_BLOCKS = 8, COLS = 5, CELL = 200, BORDER = 4;
 const $ = (id) => document.getElementById(id);
 
 try {
@@ -109,61 +120,76 @@ try {
 
 // ---- drawing loop (same as run_examples.py) ----
 
-// Unrotated block outline in block units, relative to the top-left corner of its box.
-function outline(kind, w, h) {
-  if (kind === "roof") return [[0, h], [w / 2, 0], [w, h]];
-  if (kind === "half") return [[0, 0], [0, h], [w, h]];
-  return [[0, 0], [w, 0], [w, h], [0, h]];
-}
-
-const overlap = ({ box: [ax, ay, aw, ah] }, { box: [bx, by, bw, bh] }) =>
-  ax < bx + bw && bx < ax + aw && ay < by + bh && by < ay + ah;
-
-// Whether a placed block has a flat face on side 0-3 (top, right, bottom, left).
-const flat = (b, side) => BLOCKS[b.kind][2][(side - b.rot + 4) % 4];
 const randint = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
+const pick = (xs) => xs[randint(0, xs.length - 1)];
 
-// A block's size and outline after rot quarter turns clockwise, in grid units.
-function turned(kind, rot) {
-  let [w, h] = BLOCKS[kind], points = outline(kind, w, h);
-  for (let r = 0; r < rot; r++) {
-    const h0 = h;
-    points = points.map(([px, py]) => [h0 - py, px]);
-    [w, h] = [h, w];
-  }
-  return { w, h, points };
+// The block's outline after k turns of 45 degrees (clockwise on screen) about its first corner.
+function turned(kind, k) {
+  const c = Math.cos(k * Math.PI / 4), s = Math.sin(k * Math.PI / 4);
+  return BLOCKS[kind][0].map(([x, y]) => [x * c - y * s, x * s + y * c]);
 }
-// Presets store blocks without points; rebuild them from kind, rot and box.
-const placed = (b) => b.points || (b.points = turned(b.kind, b.rot).points
-  .map(([px, py]) => [(b.box[0] + px) / GRID, (b.box[1] + py) / GRID]));
+const faces = (pts) => pts.map((p, i) => [p, pts[(i + 1) % pts.length]]);
+const unit = (p, q) => { const d = Math.hypot(q[0] - p[0], q[1] - p[1]); return [(q[0] - p[0]) / d, (q[1] - p[1]) / d, d]; };
+// Presets store outlines in grid units; scale them to the canvas once.
+const placed = (b) => b.points || (b.points = b.pts.map(([x, y]) => [x / GRID, y / GRID]));
 
-// A block turned by 0-3 quarter turns, flat face to flat face with a random kept block.
+// Whether two convex outlines overlap by more than a touch (separating axis test).
+function overlap(a, b) {
+  for (const [[x1, y1], [x2, y2]] of [...faces(a), ...faces(b)]) {
+    const nx = y1 - y2, ny = x2 - x1;
+    const pa = a.map(([x, y]) => x * nx + y * ny), pb = b.map(([x, y]) => x * nx + y * ny);
+    if (Math.max(...pa) <= Math.min(...pb) + EPS || Math.max(...pb) <= Math.min(...pa) + EPS) return false;
+  }
+  return true;
+}
+
+// A block flush against a face of a random kept block, overlapping it by at least A/2. Faces only
+// meet when they lie on the same line, so a diagonal block can only sit on a triangle's slanted
+// face or on another diagonal block. The first block sits straight, near the centre.
 // Returns null if no free spot turns up.
 function randomBlock(kept) {
   for (let tries = 0; tries < 1000; tries++) {
-    const kinds = Object.keys(BLOCKS), kind = kinds[randint(0, kinds.length - 1)], rot = randint(0, 3);
-    const { w, h, points } = turned(kind, rot);
-    const block = { kind, rot };
-    let x, y;
+    const kind = pick(Object.keys(BLOCKS)), k = pick(BLOCKS[kind][1]);
+    let pts = turned(kind, k), dx, dy;
     if (kept.length) {
-      const a = kept[randint(0, kept.length - 1)], [ax, ay, aw, ah] = a.box, side = randint(0, 3);
-      if (!flat(a, side) || !flat(block, (side + 2) % 4)) continue;
-      if (side === 0 || side === 2) { x = randint(ax - w + 1, ax + aw - 1); y = side === 0 ? ay - h : ay + ah; }
-      else { x = side === 1 ? ax + aw : ax - w; y = randint(ay - h + 1, ay + ah - 1); }
-    } else { x = randint(GRID / 2 - 4, GRID / 2 + 4 - w); y = randint(GRID / 2 - 4, GRID / 2 + 4 - h); }  // near the centre
-    if (x < 0 || y < 0 || x + w > GRID || y + h > GRID) continue;
-    block.box = [x, y, w, h];
-    if (kept.some((b) => overlap(block, b))) continue;
-    block.points = points.map(([px, py]) => [(x + px) / GRID, (y + py) / GRID]);
-    return block;
+      const [p1, p2] = pick(faces(pick(kept).pts)), [ux, uy, la] = unit(p1, p2);
+      const match = faces(pts).filter(([q1, q2]) => { const [vx, vy] = unit(q1, q2); return ux * vx + uy * vy < -1 + EPS; });
+      if (!match.length) continue;
+      const [q1, q2] = pick(match), lb = unit(q1, q2)[2];
+      const t = 1 - lb + randint(0, Math.floor(la + lb - 2 + EPS));  // q2 sits t along the face, in steps of A/2
+      dx = p1[0] + t * ux - q2[0]; dy = p1[1] + t * uy - q2[1];
+    } else {
+      if (k % 2) continue;
+      const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
+      const w = Math.round(Math.max(...xs) - Math.min(...xs)), h = Math.round(Math.max(...ys) - Math.min(...ys));
+      dx = randint(GRID / 2 - 4, GRID / 2 + 4 - w) - Math.min(...xs);  // near the centre
+      dy = randint(GRID / 2 - 4, GRID / 2 + 4 - h) - Math.min(...ys);
+    }
+    pts = pts.map(([x, y]) => [Math.round((x + dx) * 1e6) / 1e6, Math.round((y + dy) * 1e6) / 1e6]);
+    // the drawing is recentred after each change, so only its total size must fit the canvas
+    const all = [...kept.flatMap((b) => b.pts), ...pts], xs = all.map((p) => p[0]), ys = all.map((p) => p[1]);
+    if (Math.max(...xs) - Math.min(...xs) > GRID + EPS || Math.max(...ys) - Math.min(...ys) > GRID + EPS) continue;
+    if (kept.some((b) => overlap(pts, b.pts))) continue;
+    return block(kind, k, pts);
   }
   return null;
 }
 
-// 1-3 blocks, each against a kept block or an earlier one of the group.
-function randomBlocks(kept) {
+const block = (kind, rot, pts) => ({ kind, rot, pts, points: pts.map(([x, y]) => [x / GRID, y / GRID]) });
+
+// Shift the drawing by whole grid units so its bounding box sits in the middle of the canvas.
+function recenter(blocks) {
+  const all = blocks.flatMap((b) => b.pts), xs = all.map((p) => p[0]), ys = all.map((p) => p[1]);
+  const shift = (lo, hi) => Math.min(Math.max(Math.round(GRID / 2 - (lo + hi) / 2), -lo), GRID - hi);
+  const dx = shift(Math.min(...xs), Math.max(...xs)), dy = shift(Math.min(...ys), Math.max(...ys));
+  if (!dx && !dy) return blocks;
+  return blocks.map((b) => block(b.kind, b.rot, b.pts.map(([x, y]) => [Math.round((x + dx) * 1e6) / 1e6, Math.round((y + dy) * 1e6) / 1e6])));
+}
+
+// 1-3 blocks (at most room), each against a kept block or an earlier one of the group.
+function randomBlocks(kept, room = 3) {
   const group = [];
-  for (let n = randint(1, 3); n > 0; n--) {
+  for (let n = Math.min(randint(1, 3), room); n > 0; n--) {
     const b = randomBlock([...kept, ...group]);
     if (!b) break;
     group.push(b);
@@ -171,13 +197,18 @@ function randomBlocks(kept) {
   return group;
 }
 
-// Whether two blocks meet flat face to flat face.
+// Whether two blocks meet face to face: faces on the same line, running opposite ways, overlapping.
 function touching(a, b) {
-  const [ax, ay, aw, ah] = a.box, [bx, by, bw, bh] = b.box;
-  let side = -1;
-  if (ay < by + bh && by < ay + ah) side = ax + aw === bx ? 1 : bx + bw === ax ? 3 : -1;  // left or right neighbours
-  if (side < 0 && ax < bx + bw && bx < ax + aw) side = ay + ah === by ? 2 : by + bh === ay ? 0 : -1;  // above or below
-  return side >= 0 && flat(a, side) && flat(b, (side + 2) % 4);
+  for (const [p1, p2] of faces(a.pts)) {
+    const [ux, uy, la] = unit(p1, p2);
+    for (const [q1, q2] of faces(b.pts)) {
+      const [vx, vy] = unit(q1, q2);
+      if (ux * vx + uy * vy > -1 + EPS || Math.abs(ux * (q1[1] - p1[1]) - uy * (q1[0] - p1[0])) > EPS) continue;
+      const [s1, s2] = [q1, q2].map((q) => (q[0] - p1[0]) * ux + (q[1] - p1[1]) * uy).sort((x, y) => x - y);
+      if (Math.min(la, s2) - Math.max(0, s1) > EPS) return true;
+    }
+  }
+  return false;
 }
 
 // Index groups of blocks that connect flat face to flat face.
@@ -197,29 +228,29 @@ function components(blocks) {
   return groups;
 }
 
-// Add 1-3 blocks or, sometimes, take away one block whose removal keeps the rest connected.
+// Add 1-3 blocks (up to MAX_BLOCKS) or, sometimes, take away one whose removal keeps the rest connected.
 function mutate(parent) {
   if (parent.length > 1 && (parent.length >= MAX_BLOCKS || Math.random() < P_REMOVE)) {
     const without = (i) => parent.filter((_, j) => j !== i);
     const removable = parent.map((_, i) => i).filter((i) => components(without(i)).length === 1);
-    if (removable.length) return { shapes: without(removable[randint(0, removable.length - 1)]), op: "remove" };
+    if (removable.length) return { shapes: recenter(without(removable[randint(0, removable.length - 1)])), op: "remove" };
   }
-  return { shapes: [...parent, ...randomBlocks(parent)], op: "add" };
+  return { shapes: recenter([...parent, ...randomBlocks(parent, MAX_BLOCKS - parent.length)]), op: "add" };
 }
 
 // Blocks of a on one side of a random vertical or horizontal cut, blocks of b on the other.
 // b's blocks that overlap a's are dropped, and only the largest connected group stays.
 function cross(a, b) {
-  const axis = randint(0, 1), mid = (blk) => blk.box[axis] + blk.box[axis + 2] / 2;  // axis 0: left/right halves
+  const axis = randint(0, 1), mid = (blk) => blk.pts.reduce((m, pt) => m + pt[axis], 0) / blk.pts.length;  // axis 0: left/right halves
   const mids = [...a, ...b].map(mid), lo = Math.min(...mids), cut = lo + Math.random() * (Math.max(...mids) - lo);
   const child = a.filter((blk) => mid(blk) < cut);
-  child.push(...b.filter((blk) => mid(blk) >= cut && !child.some((c) => overlap(blk, c))));
+  child.push(...b.filter((blk) => mid(blk) >= cut && !child.some((c) => overlap(blk.pts, c.pts))));
   if (!child.length) return [...a];
-  return components(child).reduce((x, y) => y.length > x.length ? y : x).map((i) => child[i]);
+  return recenter(components(child).reduce((x, y) => y.length > x.length ? y : x).map((i) => child[i]));
 }
 
 const same = (a, b) => {
-  const key = (blocks) => blocks.map((blk) => [blk.kind, blk.rot, ...blk.box].join()).sort().join(";");
+  const key = (blocks) => blocks.map((blk) => [blk.kind, blk.rot, ...blk.pts.flat().map((v) => v.toFixed(3))].join()).sort().join(";");
   return key(a) === key(b);
 };
 
@@ -233,7 +264,7 @@ function childOf(cands, probs) {
   const i = draw(), j = draw(), a = cands[i].shapes, b = cands[j].shapes;
   if (Math.random() < P_CROSS && !same(a, b)) {
     const shapes = cross(a, b);
-    if (!same(shapes, a) && !same(shapes, b)) return { shapes, parent: i, parent2: j, op: "cross" };
+    if (shapes.length <= MAX_BLOCKS && !same(shapes, a) && !same(shapes, b)) return { shapes, parent: i, parent2: j, op: "cross" };
   }
   return { ...mutate(a), parent: i };
 }
@@ -399,41 +430,60 @@ function show(r, note) {
 // ---- gallery of canned runs ----
 
 let thumbs = [];
+const set = () => document.querySelector("input[name=set]:checked").value;
+
+function thumb(p, label) {
+  const fig = document.createElement("figure"), c = document.createElement("canvas");
+  c.width = c.height = 160;
+  const ctx = c.getContext("2d");
+  clear(ctx);
+  paint(ctx, finalShapes(p), KEPT);
+  const cap = document.createElement("figcaption");
+  cap.textContent = `${label}P = ${p.p.toFixed(2)}`;
+  if (p.p > TARGET) cap.className = "yes";
+  fig.append(c, cap);
+  fig.onclick = () => {
+    thumbs.forEach((t) => t.classList.remove("sel"));
+    fig.classList.add("sel");
+    show(p, `Canned run: ${p.object}, seed ${p.seed}, ${p.model}, cost $${p.cost.toFixed(5)}.`);
+  };
+  thumbs.push(fig);
+  return fig;
+}
+
+// Objects: all runs, a row per object. Alphabet: the best run per letter, in one grid.
 function gallery() {
-  const runs = PRESETS.genetic || [];
-  let best = null;
+  const runs = PRESETS[set()] || [];
   thumbs = [];
   $("gallery").textContent = "";
-  for (const obj of new Set(runs.map((p) => p.object))) {
-    const label = document.createElement("div");
-    label.className = "row-label";
-    label.textContent = obj;
+  if (set() === "alphabet") {
     const grid = document.createElement("div");
-    grid.className = "gallery";
-    runs.forEach((p) => {
-      if (p.object !== obj) return;
-      const fig = document.createElement("figure"), c = document.createElement("canvas");
-      c.width = c.height = 160;
-      const ctx = c.getContext("2d");
-      clear(ctx);
-      paint(ctx, finalShapes(p), KEPT);
-      const cap = document.createElement("figcaption");
-      cap.textContent = `P = ${p.p.toFixed(2)}`;
-      if (p.p > TARGET) cap.className = "yes";
-      fig.append(c, cap);
-      fig.onclick = () => {
-        thumbs.forEach((t) => t.classList.remove("sel"));
-        fig.classList.add("sel");
-        show(p, `Canned run: ${p.object}, seed ${p.seed}, ${p.model}, cost $${p.cost.toFixed(5)}.`);
-      };
-      thumbs.push(fig);
-      if (!best || p.p > best.p) best = { p: p.p, fig };
-      grid.append(fig);
-    });
-    $("gallery").append(label, grid);
+    grid.className = "gallery letters";
+    runs.forEach((p) => grid.append(thumb(p, `${p.object.slice(-1)} · `)));
+    $("gallery").append(grid);
+  } else {
+    for (const obj of new Set(runs.map((p) => p.object))) {
+      const label = document.createElement("div"), grid = document.createElement("div");
+      label.className = "row-label";
+      label.textContent = obj;
+      grid.className = "gallery";
+      runs.filter((p) => p.object === obj).forEach((p) => grid.append(thumb(p, "")));
+      $("gallery").append(label, grid);
+    }
   }
-  if (best) best.fig.click();  // start with the best canned run
+  const best = runs.reduce((a, p, i) => a < 0 || p.p > runs[a].p ? i : a, -1);
+  if (best >= 0) thumbs[best].click();  // start with the best canned run
 }
+// #alphabet in the URL opens the alphabet
+document.querySelectorAll("input[name=set]").forEach((r) => {
+  if (location.hash === `#${r.value}`) r.checked = true;
+  r.onchange = () => {
+    history.replaceState(null, "", r.value === "alphabet" ? "#alphabet" : location.pathname);
+    $("object").value = r.value === "alphabet" ? "capital letter A" : "house";
+    gallery();
+  };
+});
+if (set() === "alphabet") $("object").value = "capital letter A";
 gallery();
 
 // ---- live run ----
@@ -449,7 +499,7 @@ async function evolveLive(key, obj, st) {
   const sheet = document.createElement("canvas");
   sheet.width = COLS * CELL;
   sheet.height = Math.ceil(POP / COLS) * CELL;
-  let cands = Array.from({ length: POP }, () => ({ shapes: randomBlocks([]), parent: null, op: "seed" })), top = null;
+  let cands = Array.from({ length: POP }, () => ({ shapes: recenter(randomBlocks([])), parent: null, op: "seed" })), top = null;
   while (!run.stop) {
     for (let i = cands.length - 1; i > 0; i--) {  // new panel positions every generation, against position bias
       const j = randint(0, i);
