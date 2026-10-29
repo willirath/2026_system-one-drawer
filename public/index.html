@@ -56,15 +56,15 @@ calls and costs well under one cent.</p>
 </section>
 
 <section id="tab-word" hidden>
-<p class="small">Type up to 7 letters or digits: the word is set from the alphabet's best letters. <b>Evolve</b>
-then improves the word as a whole: 10 versions at once, each changing one letter or mixing letters from two
-parents. Jev picks from a grid, "Which panel shows the word …?", and its <code>noul</code> P on "The image shows
-the word …" tracks progress, up to 30 generations. The animation shows Jev's pick in each generation; letters that
-changed are green.</p>
-<label for="word">Word</label>
-<input id="word" class="word" type="text" value="SYSTEM1" maxlength="7" autocomplete="off">
+<p class="small">Type up to 7 letters or digits. Every character is its own letter run, as in the Alphabet tab, and
+the animation plays them side by side: Jev's pick for each character in each generation, letters that changed in
+green, and at the end the best drawing of each. Without a key it plays the canned runs from the alphabet.
+<b>Evolve</b> runs a fresh evolution for every character, all in parallel.</p>
+<label for="wordtext">Word</label>
+<input id="wordtext" class="word" type="text" value="SYSTEM1" maxlength="7" autocomplete="off">
 <canvas id="wordview" width="768" height="384"></canvas>
 <p id="wordcaption"></p>
+<p id="wordps" class="small"></p>
 <div class="controls">
   <button id="wfirst" title="First generation">⏮</button>
   <button id="wprev" title="Previous generation">◀</button>
@@ -74,7 +74,8 @@ changed are green.</p>
   <input id="wslider" type="range" min="1" max="1" value="1">
 </div>
 <svg id="wchart" class="chart" viewBox="0 0 384 90" preserveAspectRatio="none" aria-label="P of each generation's pick"></svg>
-<p class="small">Evolve with your OpenRouter key (below). A run makes up to 60 Jev calls and costs well under one cent.</p>
+<p class="small">Evolve with your OpenRouter key (below). Each character makes up to 60 Jev calls; a 7-letter word
+costs about two cents.</p>
 <button id="evolve">Evolve</button>
 <button id="wstop" disabled>Stop</button>
 <p id="wstatus" class="small"></p>
@@ -91,7 +92,6 @@ rocket, flagpole) and draw anything you type.
 Code: <a href="https://github.com/willirath/2026_system-one-drawer">github.com/willirath/2026_system-one-drawer</a></p>
 
 <script src="presets-alphabet.js"></script>
-<script src="presets-words.js"></script>
 <script>
 const DRAWER = {
   runs: PRESETS.alphabet,
@@ -111,7 +111,7 @@ function tab(name) {
   document.querySelectorAll("#tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === name));
   document.querySelectorAll("section[id^=tab-]").forEach((s) => { s.hidden = s.id !== `tab-${name}`; });
   history.replaceState(null, "", name === "word" ? "#word" : location.pathname);
-  if (name === "word") { stopPlay(); if (wrun.frames.length && !wtimer) { wpos = 0; wplay(); } }
+  if (name === "word") { stopPlay(); if (wrun && wcount() && !wtimer) { wpos = 0; wplay(); } }
   else wstopPlay();
 }
 document.querySelectorAll("#tabs button").forEach((b) => { b.onclick = () => tab(b.dataset.tab); });

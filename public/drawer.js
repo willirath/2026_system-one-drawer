@@ -216,13 +216,19 @@ function pngOf(shapes) {
 }
 
 async function decide(key, uri, questions) {
-  const r = await fetch("https://openrouter.ai/api/alpha/decisions", {
-    method: "POST",
-    headers: { "Authorization": `Bearer ${key}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ model: MODEL, state: [{ type: "image_url", image_url: { url: uri } }], questions }),
-  });
-  if (!r.ok) throw new Error(`${r.status}: ${await r.text()}`);
-  return r.json();
+  for (let attempt = 0; ; attempt++) {
+    const r = await fetch("https://openrouter.ai/api/alpha/decisions", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${key}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ model: MODEL, state: [{ type: "image_url", image_url: { url: uri } }], questions }),
+    });
+    if ([429, 500, 502, 503].includes(r.status) && attempt < 4) {  // back off and retry, e.g. when many runs go at once
+      await new Promise((ok) => setTimeout(ok, 1000 * 2 ** attempt));
+      continue;
+    }
+    if (!r.ok) throw new Error(`${r.status}: ${await r.text()}`);
+    return r.json();
+  }
 }
 
 const article = (obj) => /^[aeiou]/i.test(obj) ? "an" : "a";
@@ -381,54 +387,61 @@ gallery();
 
 // ---- live run ----
 
-function tally(resp) {
-  run.model = resp.model || MODEL;
-  run.cost += (resp.usage && resp.usage.cost) || 0;
-  run.calls++;
-}
-
-async function evolveLive(key, obj, st) {
-  run = { object: obj, model: MODEL, p: -1, stop: "", cost: 0, calls: 0, generations: [] };
+// One genetic run for obj. Calls onGeneration(run, status) after each generation and stops early
+// when isCancelled() says so. Returns the run: { object, generations, p, stop, cost, calls, model }.
+async function evolve(key, obj, onGeneration, isCancelled) {
+  const r = { object: obj, model: MODEL, p: -1, stop: "", cost: 0, calls: 0, generations: [] };
+  const tally = (resp) => { r.model = resp.model || MODEL; r.cost += (resp.usage && resp.usage.cost) || 0; r.calls++; };
   const sheet = document.createElement("canvas");
   sheet.width = COLS * CELL;
   sheet.height = Math.ceil(POP / COLS) * CELL;
   let cands = Array.from({ length: POP }, () => ({ shapes: recenter(randomBlocks([])), parent: null, op: "seed" })), top = null;
-  while (!run.stop) {
+  while (!r.stop) {
     for (let i = cands.length - 1; i > 0; i--) {  // new panel positions every generation, against position bias
       const j = randint(0, i);
       [cands[i], cands[j]] = [cands[j], cands[i]];
     }
     drawSheet(sheet.getContext("2d"), cands.map((c) => c.shapes));
-    st.textContent = `Generation ${run.generations.length + 1}: asking Jev to pick a panel…`;
     let resp = await decide(key, sheet.toDataURL("image/png"), { pick: choiceQuestion(obj, POP) });
     tally(resp);
     const probs = cands.map((_, i) => resp.answers.pick.probabilities[i + 1] || 0);
     const best = probs.indexOf(Math.max(...probs));
     let p = cands[best].p;  // known for drawings carried over
     if (p === undefined) {
-      st.textContent = `Generation ${run.generations.length + 1}: asking Jev about the pick…`;
       resp = await ask(key, cands[best].shapes, obj);
       tally(resp);
       p = resp.answers.is.noul;
     }
-    run.generations.push({ candidates: cands, probs, best, p });
-    if (p >= run.p) { run.p = p; top = cands[best].shapes; }
-    pos = run.generations.length;
-    render();
-    run.stop = cancelled ? "stopped" : p > TARGET ? "target" : run.generations.length >= GENERATIONS ? "generations" : "";
-    if (run.stop) break;
+    r.generations.push({ candidates: cands, probs, best, p });
+    if (p >= r.p) { r.p = p; top = cands[best].shapes; }
+    r.stop = isCancelled() ? "stopped" : p > TARGET ? "target" : r.generations.length >= GENERATIONS ? "generations" : "";
+    onGeneration(r);
+    if (r.stop) break;
     // the best so far and the current pick survive; children fill the rest
     const anchor = cands.findIndex((c) => c.shapes === top);
-    const next = [{ shapes: top, parent: anchor, op: "best", p: run.p }];
+    const next = [{ shapes: top, parent: anchor, op: "best", p: r.p }];
     if (best !== anchor) next.push({ shapes: cands[best].shapes, parent: best, op: "elite", p });
     while (next.length < POP) next.push(childOf(cands, probs));
     cands = next;
   }
+  return r;
+}
+
+const STOPS = { stopped: "stopped by you", target: "P > 0.66", generations: "30 generations" };
+
+async function evolveLive(key, obj, st) {
+  st.textContent = "Generation 1: asking Jev…";
+  run = await evolve(key, obj, (r) => {
+    run = r;
+    pos = r.generations.length;
+    render();
+    st.textContent = `Generation ${r.generations.length + 1}: asking Jev…`;
+  }, () => cancelled);
   done(st);
 }
 
 function done(st) {
-  st.textContent = `Done (${{ stopped: "stopped by you", target: "P > 0.66", generations: "30 generations" }[run.stop]}), `
+  st.textContent = `Done (${STOPS[run.stop]}), `
     + `${run.calls} Jev calls, cost $${run.cost.toFixed(5)}.`;
   pos = last();
   render();

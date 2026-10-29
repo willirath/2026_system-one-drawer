@@ -36,16 +36,14 @@ best canned run per capital letter and digit step by step and draws any letter
 live, with your own OpenRouter key. The key goes straight from the browser to
 openrouter.ai.
 
-The Word tab ([public/words.js](public/words.js), `#word` in the URL) sets a
-word of up to 7 letters or digits from the canned letters, free and without a
-key. Evolve improves the word as a whole: 10 versions per generation, each child
-changing one letter (mutation) or taking each letter from one of two parents
-(crossover). Jev picks from a 2 x 5 grid, "Which panel shows the word ...?", and
-its `noul` P on "The image shows the word ..." tracks progress, with the same
-keep-the-best rule and limits as single drawings. The tab animates the
-evolution: Jev's pick in each generation, with changed letters in green. It
-opens with a canned run for SYSTEM1. Word images are 768 x 384: Jev rejects
-images less than about 300 px tall ("Invalid image dimensions").
+The Word tab ([public/words.js](public/words.js), `#word` in the URL) writes a
+word of up to 7 letters or digits. Every character is its own letter run, and
+the tab animates them side by side: Jev's pick for each character in each
+generation, changed letters in green, and at the end the best drawing of each.
+Without a key it plays the canned alphabet runs, so any word animates for free.
+Evolve runs a fresh evolution for every character, all in parallel (about two
+cents for 7 characters).
+
 [public/explore/](public/explore/index.html) does the same for objects (house,
 rocket, flagpole with flag) and draws anything you type. Both pages share
 [public/drawer.js](public/drawer.js) and [public/style.css](public/style.css).
@@ -59,7 +57,6 @@ GitHub Pages serves `public/` via
 ```bash
 cp .env.template .env                 # then paste an OpenRouter key
 uv run run_examples.py alphabet 3     # 3 runs each of "capital letter A" ... "Z", "digit 0" ... "9"
-uv run run_examples.py word 3         # 3 runs of the word SYSTEM1, from the best canned letters
 uv run run_examples.py genetic 8      # explore/: 8 runs each of house, rocket, flagpole with flag
 uv run run_examples.py genetic-nox 8  # without crossover, for comparison
 uv run run_examples.py genetic 3 dog  # or: mode, runs per object, objects
@@ -67,8 +64,7 @@ uv run run_examples.py genetic 3 dog  # or: mode, runs per object, objects
 
 The alphabet's best run per letter goes to `public/presets-alphabet.js`, all its
 runs to `results/presets-alphabet-all.json`. The default genetic runs go to
-`public/explore/presets-objects.js`, the best word run to
-`public/presets-words.js`. Everything else goes to
+`public/explore/presets-objects.js`. Everything else goes to
 `results/presets-<mode>[-<objects>].json`. Final drawings land in
 `results/<mode>/`.
 
@@ -103,9 +99,6 @@ free. Diagonals and recentring raised the correct reads from 26 to 38 of 78.
 **Digits**, 3 runs each ("digit 0" ... "digit 9"): 1 and 4 reach P > 0.66 in
 all their runs; round digits stay low (0: 0.16, 8: 0.26, 6: 0.30 at best). 1278
 Jev calls, $0.07.
-
-**Words**, 3 runs of SYSTEM1 from the best canned letters: best P 0.51-0.59
-after 30 generations, none above 0.66. 160 Jev calls, $0.013.
 
 The comparisons below ran on the earlier 8A x 8A canvas with house, rocket and
 boat. Final P, and how many runs reached P > 0.66. "Random walk"
