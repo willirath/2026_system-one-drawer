@@ -35,11 +35,25 @@ the best drawing.</p>
 <p id="note" class="small"></p>
 
 <h2>The alphabet</h2>
-<p class="small">The best of 3 runs per capital letter. Click one to replay it.</p>
+<p class="small">The best of 3 runs per capital letter and digit. Click one to replay it.</p>
 <div id="gallery"></div>
 
+<h2>Write a word</h2>
+<p class="small">Type up to 7 letters or digits: the word is set from the alphabet above. With your OpenRouter key
+(below), <b>Evolve</b> improves the word as a whole: 10 versions at once, each changing one letter or mixing
+letters from two parents. Jev picks from a grid, "Which panel shows the word …?", and its <code>noul</code> P on
+"The image shows the word …" tracks progress, up to 30 generations.</p>
+<label for="word">Word</label>
+<input id="word" class="word" type="text" value="SYSTEM1" maxlength="7" autocomplete="off">
+<canvas id="wordview" width="768" height="256"></canvas>
+<p id="wordcaption"></p>
+<button id="evolve">Evolve</button>
+<button id="wstop" disabled>Stop</button>
+<p id="wstatus" class="small"></p>
+<canvas id="wordsheet" width="960" height="800" hidden></canvas>
+
 <h2>Draw a letter</h2>
-<p class="small">Pick a letter and draw it live with your own OpenRouter key. A run makes up to 60 Jev calls and
+<p class="small">Pick a letter or digit and draw it live with your own OpenRouter key. A run makes up to 60 Jev calls and
 costs well under one cent.</p>
 <label for="letter">Letter</label>
 <input id="letter" class="letter" type="text" value="A" maxlength="1" autocomplete="off">
@@ -60,10 +74,14 @@ Code: <a href="https://github.com/willirath/2026_system-one-drawer">github.com/w
 const DRAWER = {
   runs: PRESETS.alphabet,
   letters: true,
-  object: () => { const c = document.getElementById("letter").value.trim().toUpperCase(); return /^[A-Z]$/.test(c) ? `capital letter ${c}` : null; },
-  hint: "Enter a letter from A to Z.",
+  object: () => {
+    const c = document.getElementById("letter").value.trim().toUpperCase();
+    return /^[A-Z]$/.test(c) ? `capital letter ${c}` : /^[0-9]$/.test(c) ? `digit ${c}` : null;
+  },
+  hint: "Enter a letter from A to Z or a digit.",
 };
 </script>
 <script src="drawer.js"></script>
+<script src="words.js"></script>
 </body>
 </html>

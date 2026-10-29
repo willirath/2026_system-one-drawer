@@ -32,8 +32,17 @@ result is the best drawing.
 ## Web app
 
 The page shows the alphabet: [public/index.html](public/index.html) replays the
-best canned run per capital letter step by step and draws any letter live, with
-your own OpenRouter key. The key goes straight from the browser to openrouter.ai.
+best canned run per capital letter and digit step by step and draws any letter
+live, with your own OpenRouter key. The key goes straight from the browser to
+openrouter.ai.
+
+Word mode ([public/words.js](public/words.js)) sets a word of up to 7 letters
+or digits (SYSTEM1 to start with) from the canned letters, free and without a
+key. With a key, Evolve improves the word as a whole: 10 versions per
+generation, each child changing one letter (mutation) or taking each letter from
+one of two parents (crossover). Jev picks from a 2 x 5 grid, "Which panel shows
+the word ...?", and its `noul` P on "The image shows the word ..." tracks
+progress, with the same keep-the-best rule and limits as single drawings.
 [public/explore/](public/explore/index.html) does the same for objects (house,
 rocket, flagpole with flag) and draws anything you type. Both pages share
 [public/drawer.js](public/drawer.js) and [public/style.css](public/style.css).
@@ -46,7 +55,7 @@ GitHub Pages serves `public/` via
 
 ```bash
 cp .env.template .env                 # then paste an OpenRouter key
-uv run run_examples.py alphabet 3     # 3 runs each of "capital letter A" ... "capital letter Z"
+uv run run_examples.py alphabet 3     # 3 runs each of "capital letter A" ... "Z", "digit 0" ... "9"
 uv run run_examples.py genetic 8      # explore/: 8 runs each of house, rocket, flagpole with flag
 uv run run_examples.py genetic-nox 8  # without crossover, for comparison
 uv run run_examples.py genetic 3 dog  # or: mode, runs per object, objects
@@ -85,6 +94,10 @@ Letters made of straight strokes work; round ones (B, D, O, Q) and busy ones
 (E, H, M) don't. Random block drawings come out as K 13 times in 26, so K comes
 free. Diagonals and recentring raised the correct reads from 26 to 38 of 78.
 3491 Jev calls, $0.19.
+
+**Digits**, 3 runs each ("digit 0" ... "digit 9"): 1 and 4 reach P > 0.66 in
+all their runs; round digits stay low (0: 0.16, 8: 0.26, 6: 0.30 at best). 1278
+Jev calls, $0.07.
 
 The comparisons below ran on the earlier 8A x 8A canvas with house, rocket and
 boat. Final P, and how many runs reached P > 0.66. "Random walk"

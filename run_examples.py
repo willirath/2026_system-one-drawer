@@ -6,7 +6,7 @@
 
 Usage: uv run run_examples.py [mode] [runs_per_object] [object ...]
 Modes: `genetic` (default, the objects in OBJECTS), `alphabet` (the same for the
-capital letters A-Z), or `genetic-nox` (objects without crossover, for
+capital letters A-Z and the digits 0-9), or `genetic-nox` (objects without crossover, for
 comparison). Defaults: 5 runs of each object. Default `alphabet` runs put the
 best run per letter in public/presets-alphabet.js (the main page) and all runs in
 results/presets-alphabet-all.json; default `genetic` runs go to
@@ -51,7 +51,7 @@ TARGET = 0.66
 FILL = (0, 0, 0, 178)  # black at 70% opacity, same as the web app
 # distinct shapes that score low on random drawings but reachably high on good ones (experiments/screen_targets.py)
 OBJECTS = ["house", "rocket", "flagpole with flag"]
-LETTERS = [f"capital letter {c}" for c in "ABCDEFGHIJKLMNOPQRSTUVWXYZ"]
+LETTERS = [f"capital letter {c}" for c in "ABCDEFGHIJKLMNOPQRSTUVWXYZ"] + [f"digit {d}" for d in range(10)]
 SETS = {"genetic": OBJECTS, "genetic-nox": OBJECTS, "alphabet": LETTERS}
 PUBLIC = {"alphabet": "public/presets-alphabet.js", "genetic": "public/explore/presets-objects.js"}
 GRID = 24  # blocks live on a GRID x GRID canvas in grid units; a block side A is 2 units
