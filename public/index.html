@@ -1,0 +1,510 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>System-One Drawer</title>
+<style>
+  :root { --bg: #fff; --fg: #111; --muted: #666; --yes: #1a7f37; --no: #c62828; --border: #ccc; --paper: #fff; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #121212; --fg: #eee; --muted: #999; --yes: #4caf50; --no: #ef5350; --border: #444; }
+  }
+  body { background: var(--bg); color: var(--fg); font: 16px/1.5 system-ui, sans-serif;
+         max-width: 44rem; margin: 0 auto; padding: 1rem; }
+  h1 { margin: 0.5rem 0; }
+  h2 { font-size: 1.1rem; margin: 1.5rem 0 0.5rem; }
+  p.small { color: var(--muted); font-size: 0.85rem; }
+  p.small a { color: inherit; }
+  label { display: block; margin-top: 0.75rem; font-weight: 600; }
+  input[type=password], input[type=text] { width: 100%; box-sizing: border-box; padding: 0.4rem;
+         border: 1px solid var(--border); background: var(--bg); color: var(--fg); }
+  button { margin-top: 0.5rem; padding: 0.4rem 1rem; font-size: 1rem; cursor: pointer; }
+  canvas { background: var(--paper); border: 1px solid var(--border); display: block; }
+  #view { width: 100%; max-width: 384px; height: auto; aspect-ratio: 1; }
+  #controls { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+  #controls button { margin: 0.5rem 0 0; padding: 0.3rem 0.7rem; }
+  #slider { flex: 1; min-width: 8rem; margin-top: 0.5rem; }
+  #caption { font-size: 1.2rem; font-weight: 700; margin: 0.5rem 0 0; min-height: 1.8rem; }
+  .yes { color: var(--yes); } .no { color: var(--no); }
+  #chart { width: 100%; max-width: 384px; height: 90px; display: block; margin-top: 0.5rem; }
+  .gallery { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.4rem; }
+  .gallery figure { margin: 0; cursor: pointer; text-align: center; font-size: 0.75rem; color: var(--muted); }
+  .gallery canvas { width: 100%; height: auto; aspect-ratio: 1; }
+  .gallery figure.sel canvas { outline: 3px solid var(--yes); }
+  .row-label { font-weight: 600; margin: 0.75rem 0 0.25rem; }
+  #sheet { width: 100%; height: auto; aspect-ratio: 5 / 2; margin-top: 0.75rem; }
+</style>
+</head>
+<body>
+<h1>✏️ System-One Drawer</h1>
+<p class="small">Draws an object from toy building blocks (square A×A, double square 2A×A, half square, roof with
+base 2A and height A), turned in quarter turns and placed flat face to flat face. Slanted faces don't attach. TypeSafe's
+Jev (via OpenRouter), a fast decision model, is the only judge.</p>
+<p class="small">It evolves 10 drawings at once. Each generation, Jev sees them side by side in a grid and answers a
+<code>choice</code> question: "Which panel shows a(n) &lt;object&gt;?" Its probabilities are the fitness. The pick
+carries over unchanged. The other 9 are children of parents drawn by fitness: half by crossover (one parent's
+blocks on one side of a random cut, the other's on the other side), half by mutation (1-3 blocks added, or one
+taken away). A <code>noul</code> question on the pick ("The image shows a(n) &lt;object&gt;.") tracks progress.
+A run stops at P &gt; 0.66 or after 30 generations and shows the pick with the highest P.</p>
+
+<canvas id="view" width="384" height="384"></canvas>
+<p id="caption"></p>
+<div id="controls">
+  <button id="first" title="First generation">⏮</button>
+  <button id="prev" title="Previous generation">◀</button>
+  <button id="play" title="Play">▶ Play</button>
+  <button id="next" title="Next generation">▶</button>
+  <button id="last" title="Final drawing">⏭</button>
+  <input id="slider" type="range" min="1" max="1" value="1">
+</div>
+<canvas id="sheet" width="1000" height="400"></canvas>
+<svg id="chart" viewBox="0 0 384 90" preserveAspectRatio="none" aria-label="P of each generation's pick"></svg>
+<p id="note" class="small"></p>
+
+<h2>Canned drawings</h2>
+<div id="gallery"></div>
+
+<h2>Draw your own</h2>
+<p class="small">Type any object and draw it live with your own OpenRouter key. A run makes up to 60 Jev calls
+and costs well under one cent.</p>
+<label for="object">Object</label>
+<input id="object" type="text" value="house" list="ideas">
+<datalist id="ideas"><option value="house"><option value="rocket"><option value="boat"><option value="tower">
+<option value="castle"><option value="sailboat"><option value="robot"><option value="fish"><option value="elephant"></datalist>
+<label for="key">OpenRouter API key</label>
+<input id="key" type="password" placeholder="sk-or-v1-..." autocomplete="off">
+<label><input id="remember" type="checkbox"> remember key in this browser</label>
+<button id="go">Draw</button>
+<button id="stop" disabled>Stop</button>
+<p id="status" class="small"></p>
+
+<p class="small">Your key and the drawings go only to openrouter.ai. Canned drawings come from
+<code>run_examples.py</code>, which runs the same loop.
+Code: <a href="https://github.com/willirath/2026_system-one-drawer">github.com/willirath/2026_system-one-drawer</a></p>
+
+<script src="presets-genetic.js"></script>
+<script>
+const MODEL = "typesafe/jev-1.14";
+const SIZE = 384, TARGET = 0.66;
+const KEPT = "rgba(0,0,0,0.7)";
+// Blocks live on a GRID x GRID canvas in grid units; a block side A is 2 units.
+// kind: [width, height, flat faces as [top, right, bottom, left]] when not rotated
+const GRID = 16;
+const BLOCKS = {
+  square: [2, 2, [1, 1, 1, 1]],  // A x A
+  double: [4, 2, [1, 1, 1, 1]],  // 2A x A
+  half: [2, 2, [0, 0, 1, 1]],    // half square: legs A on the bottom and left
+  roof: [4, 2, [0, 0, 1, 0]],    // base 2A, height A
+};
+// drawings per generation, and the grid sheet Jev sees, in pixels
+const POP = 10, GENERATIONS = 30, P_CROSS = 0.5, P_REMOVE = 0.3, MAX_BLOCKS = 24, COLS = 5, CELL = 200, BORDER = 4;
+const $ = (id) => document.getElementById(id);
+
+try {
+  const k = localStorage.getItem("orKey");
+  if (k) { $("key").value = k; $("remember").checked = true; }
+} catch (e) {}
+
+// ---- drawing loop (same as run_examples.py) ----
+
+// Unrotated block outline in block units, relative to the top-left corner of its box.
+function outline(kind, w, h) {
+  if (kind === "roof") return [[0, h], [w / 2, 0], [w, h]];
+  if (kind === "half") return [[0, 0], [0, h], [w, h]];
+  return [[0, 0], [w, 0], [w, h], [0, h]];
+}
+
+const overlap = ({ box: [ax, ay, aw, ah] }, { box: [bx, by, bw, bh] }) =>
+  ax < bx + bw && bx < ax + aw && ay < by + bh && by < ay + ah;
+
+// Whether a placed block has a flat face on side 0-3 (top, right, bottom, left).
+const flat = (b, side) => BLOCKS[b.kind][2][(side - b.rot + 4) % 4];
+const randint = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
+
+// A block's size and outline after rot quarter turns clockwise, in grid units.
+function turned(kind, rot) {
+  let [w, h] = BLOCKS[kind], points = outline(kind, w, h);
+  for (let r = 0; r < rot; r++) {
+    const h0 = h;
+    points = points.map(([px, py]) => [h0 - py, px]);
+    [w, h] = [h, w];
+  }
+  return { w, h, points };
+}
+// Presets store blocks without points; rebuild them from kind, rot and box.
+const placed = (b) => b.points || (b.points = turned(b.kind, b.rot).points
+  .map(([px, py]) => [(b.box[0] + px) / GRID, (b.box[1] + py) / GRID]));
+
+// A block turned by 0-3 quarter turns, flat face to flat face with a random kept block.
+// Returns null if no free spot turns up.
+function randomBlock(kept) {
+  for (let tries = 0; tries < 1000; tries++) {
+    const kinds = Object.keys(BLOCKS), kind = kinds[randint(0, kinds.length - 1)], rot = randint(0, 3);
+    const { w, h, points } = turned(kind, rot);
+    const block = { kind, rot };
+    let x, y;
+    if (kept.length) {
+      const a = kept[randint(0, kept.length - 1)], [ax, ay, aw, ah] = a.box, side = randint(0, 3);
+      if (!flat(a, side) || !flat(block, (side + 2) % 4)) continue;
+      if (side === 0 || side === 2) { x = randint(ax - w + 1, ax + aw - 1); y = side === 0 ? ay - h : ay + ah; }
+      else { x = side === 1 ? ax + aw : ax - w; y = randint(ay - h + 1, ay + ah - 1); }
+    } else { x = randint(4, GRID - 4 - w); y = randint(4, GRID - 4 - h); }
+    if (x < 0 || y < 0 || x + w > GRID || y + h > GRID) continue;
+    block.box = [x, y, w, h];
+    if (kept.some((b) => overlap(block, b))) continue;
+    block.points = points.map(([px, py]) => [(x + px) / GRID, (y + py) / GRID]);
+    return block;
+  }
+  return null;
+}
+
+// 1-3 blocks, each against a kept block or an earlier one of the group.
+function randomBlocks(kept) {
+  const group = [];
+  for (let n = randint(1, 3); n > 0; n--) {
+    const b = randomBlock([...kept, ...group]);
+    if (!b) break;
+    group.push(b);
+  }
+  return group;
+}
+
+// Whether two blocks meet flat face to flat face.
+function touching(a, b) {
+  const [ax, ay, aw, ah] = a.box, [bx, by, bw, bh] = b.box;
+  let side = -1;
+  if (ay < by + bh && by < ay + ah) side = ax + aw === bx ? 1 : bx + bw === ax ? 3 : -1;  // left or right neighbours
+  if (side < 0 && ax < bx + bw && bx < ax + aw) side = ay + ah === by ? 2 : by + bh === ay ? 0 : -1;  // above or below
+  return side >= 0 && flat(a, side) && flat(b, (side + 2) % 4);
+}
+
+// Index groups of blocks that connect flat face to flat face.
+function components(blocks) {
+  const left = new Set(blocks.keys()), groups = [];
+  while (left.size) {
+    const [first] = left, group = [first], todo = [first];
+    left.delete(first);
+    while (todo.length) {
+      const i = todo.pop();
+      for (const j of [...left]) {
+        if (touching(blocks[i], blocks[j])) { left.delete(j); group.push(j); todo.push(j); }
+      }
+    }
+    groups.push(group);
+  }
+  return groups;
+}
+
+// Add 1-3 blocks or, sometimes, take away one block whose removal keeps the rest connected.
+function mutate(parent) {
+  if (parent.length > 1 && (parent.length >= MAX_BLOCKS || Math.random() < P_REMOVE)) {
+    const without = (i) => parent.filter((_, j) => j !== i);
+    const removable = parent.map((_, i) => i).filter((i) => components(without(i)).length === 1);
+    if (removable.length) return { shapes: without(removable[randint(0, removable.length - 1)]), op: "remove" };
+  }
+  return { shapes: [...parent, ...randomBlocks(parent)], op: "add" };
+}
+
+// Blocks of a on one side of a random vertical or horizontal cut, blocks of b on the other.
+// b's blocks that overlap a's are dropped, and only the largest connected group stays.
+function cross(a, b) {
+  const axis = randint(0, 1), mid = (blk) => blk.box[axis] + blk.box[axis + 2] / 2;  // axis 0: left/right halves
+  const mids = [...a, ...b].map(mid), lo = Math.min(...mids), cut = lo + Math.random() * (Math.max(...mids) - lo);
+  const child = a.filter((blk) => mid(blk) < cut);
+  child.push(...b.filter((blk) => mid(blk) >= cut && !child.some((c) => overlap(blk, c))));
+  if (!child.length) return [...a];
+  return components(child).reduce((x, y) => y.length > x.length ? y : x).map((i) => child[i]);
+}
+
+const same = (a, b) => {
+  const key = (blocks) => blocks.map((blk) => [blk.kind, blk.rot, ...blk.box].join()).sort().join(";");
+  return key(a) === key(b);
+};
+
+// One child: crossover of two parents drawn by fitness, or a mutated copy of one.
+function childOf(cands, probs) {
+  const total = probs.reduce((x, y) => x + y, 0), draw = () => {
+    let r = Math.random() * total, i = 0;
+    while (i < probs.length - 1 && (r -= probs[i]) > 0) i++;
+    return i;
+  };
+  const i = draw(), j = draw(), a = cands[i].shapes, b = cands[j].shapes;
+  if (Math.random() < P_CROSS && !same(a, b)) {
+    const shapes = cross(a, b);
+    if (!same(shapes, a) && !same(shapes, b)) return { shapes, parent: i, parent2: j, op: "cross" };
+  }
+  return { ...mutate(a), parent: i };
+}
+
+function paint(ctx, shapes, fill, ox = 0, oy = 0, w = ctx.canvas.width) {
+  ctx.fillStyle = fill;
+  ctx.strokeStyle = "#fff";
+  ctx.lineWidth = 2 * w / SIZE;
+  for (const s of shapes) {
+    ctx.beginPath();
+    placed(s).forEach(([x, y], i) => i ? ctx.lineTo(ox + x * w, oy + y * w) : ctx.moveTo(ox + x * w, oy + y * w));
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();  // a white edge keeps neighbouring blocks apart
+  }
+}
+
+function clear(ctx) {
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+}
+
+// The drawings side by side in framed panels, COLS per row, as Jev sees them.
+function drawSheet(ctx, drawings) {
+  clear(ctx);
+  const inner = CELL - 2 * BORDER - 8;
+  drawings.forEach((shapes, i) => {
+    const x = i % COLS * CELL, y = Math.floor(i / COLS) * CELL;
+    paint(ctx, shapes, KEPT, x + BORDER + 4, y + BORDER + 4, inner);
+    ctx.strokeStyle = "#000";
+    ctx.lineWidth = BORDER;
+    ctx.strokeRect(x + BORDER / 2, y + BORDER / 2, CELL - BORDER, CELL - BORDER);
+  });
+}
+
+function pngOf(shapes) {
+  const c = document.createElement("canvas");
+  c.width = c.height = SIZE;
+  const ctx = c.getContext("2d");
+  clear(ctx);
+  paint(ctx, shapes, KEPT);
+  return c.toDataURL("image/png");
+}
+
+async function decide(key, uri, questions) {
+  const r = await fetch("https://openrouter.ai/api/alpha/decisions", {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${key}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ model: MODEL, state: [{ type: "image_url", image_url: { url: uri } }], questions }),
+  });
+  if (!r.ok) throw new Error(`${r.status}: ${await r.text()}`);
+  return r.json();
+}
+
+const article = (obj) => /^[aeiou]/i.test(obj) ? "an" : "a";
+const ask = (key, shapes, obj) =>
+  decide(key, pngOf(shapes), { is: { type: "noul", instructions: `The image shows ${article(obj)} ${obj}.` } });
+
+function choiceQuestion(obj, n) {
+  const a = `${article(obj)} ${obj}`, criteria = {};
+  for (let i = 0; i < n; i++) {
+    criteria[i + 1] = `Panel ${i + 1} (row ${Math.floor(i / COLS) + 1}, column ${i % COLS + 1}) shows ${a}.`;
+  }
+  return {
+    type: "choice", criteria,
+    instructions: `The image is a grid of ${n} framed panels, ${COLS} per row, numbered left to right, `
+      + `top to bottom. Which panel shows ${a}?`,
+  };
+}
+
+// ---- player: shows a run generation by generation ----
+
+let run = null, pos = 1, timer = null;
+const last = () => run.generations.length + 1;  // the final-drawing position
+const bestGen = (r) => r.generations.reduce((a, g) => g.p > a.p ? g : a);
+const finalShapes = (r) => ((g) => g.candidates[g.best].shapes)(bestGen(r));
+
+function render() {
+  $("slider").max = last();
+  $("slider").value = pos;
+  renderGeneration();
+  chart();
+}
+
+// pos 1..N shows generation pos: Jev's grid with its choice probabilities, and the pick large.
+// pos N+1 shows the pick with the highest P.
+function renderGeneration() {
+  const gens = run.generations, n = gens.length, ctx = $("view").getContext("2d"), cap = $("caption");
+  const g = gens[Math.min(pos, n) - 1], sh = $("sheet").getContext("2d");
+  sh.canvas.height = Math.ceil(g.candidates.length / COLS) * CELL;
+  drawSheet(sh, g.candidates.map((c) => c.shapes));
+  g.candidates.forEach((c, i) => {  // annotations for the viewer only, not sent to Jev
+    const x = i % COLS * CELL, y = Math.floor(i / COLS) * CELL, pick = i === g.best;
+    if (pick) { sh.strokeStyle = "#1a7f37"; sh.lineWidth = 3 * BORDER; sh.strokeRect(x + 6, y + 6, CELL - 12, CELL - 12); }
+    sh.font = "bold 22px system-ui, sans-serif";
+    sh.fillStyle = "rgba(255,255,255,0.85)";
+    sh.fillRect(x + 12, y + 12, 58, 28);
+    sh.fillStyle = pick ? "#1a7f37" : "#333";
+    sh.fillText(g.probs[i].toFixed(2), x + 16, y + 34);
+    sh.font = "16px system-ui, sans-serif";
+    sh.fillStyle = "#666";
+    sh.textAlign = "right";
+    sh.fillText({ seed: "new", elite: "kept", add: "+", remove: "−", cross: "×" }[c.op], x + CELL - 14, y + 30);
+    sh.textAlign = "left";
+  });
+  clear(ctx);
+  if (pos > n) {
+    paint(ctx, finalShapes(run), KEPT);
+    cap.className = run.p > TARGET ? "yes" : "";
+    cap.textContent = `Final ${run.object}: P = ${run.p.toFixed(2)}, best pick of ${n} generations`;
+  } else {
+    paint(ctx, g.candidates[g.best].shapes, KEPT);
+    cap.className = g.p > TARGET ? "yes" : "";
+    cap.textContent = `Generation ${pos}/${n}: Jev picks panel ${g.best + 1} (${g.probs[g.best].toFixed(2)}), P = ${g.p.toFixed(2)}`;
+  }
+}
+
+// P of each generation's pick (green: new best), best-so-far as a step line, target dashed.
+function chart() {
+  const svg = $("chart"), gens = run.generations, n = Math.max(gens.length, 10), W = 384, H = 90, pad = 6;
+  const x = (i) => pad + (W - 2 * pad) * (i + 0.5) / n, y = (p) => H - pad - (H - 2 * pad) * p;
+  let line = "", b = -1, dots = "";
+  gens.forEach((g, i) => {
+    const up = g.p > b;
+    b = Math.max(b, g.p);
+    line += `${i ? "L" : "M"}${x(i - 0.5).toFixed(1)},${y(b).toFixed(1)}H${x(i + 0.5).toFixed(1)}`;
+    const on = i === pos - 1;
+    dots += `<circle cx="${x(i).toFixed(1)}" cy="${y(g.p).toFixed(1)}" r="${on ? 5 : 3}"
+      fill="var(--${up ? "yes" : "muted"})" ${on ? 'stroke="var(--fg)" stroke-width="1.5"' : ""}/>`;
+  });
+  svg.innerHTML = `<line x1="0" x2="${W}" y1="${y(TARGET)}" y2="${y(TARGET)}" stroke="var(--muted)" stroke-dasharray="4 3"/>
+    <text x="${W - 2}" y="${y(TARGET) - 3}" font-size="10" text-anchor="end" fill="var(--muted)">0.66</text>
+    <path d="${line}" fill="none" stroke="var(--fg)" stroke-width="1.5" vector-effect="non-scaling-stroke"/>${dots}`;
+}
+
+function go(k) { stopPlay(); pos = Math.max(1, Math.min(last(), k)); render(); }
+function stopPlay() { clearInterval(timer); timer = null; $("play").textContent = "▶ Play"; }
+function play() {
+  if (timer) return stopPlay();
+  if (pos >= last()) pos = 0;
+  $("play").textContent = "⏸ Pause";
+  timer = setInterval(() => {
+    pos++;
+    render();
+    if (pos >= last()) stopPlay();
+  }, 500);
+}
+$("first").onclick = () => go(1);
+$("prev").onclick = () => go(pos - 1);
+$("next").onclick = () => go(pos + 1);
+$("last").onclick = () => go(Infinity);
+$("play").onclick = play;
+$("slider").oninput = () => go(+$("slider").value);
+
+function show(r, note) {
+  stopPlay();
+  run = r;
+  pos = 0;
+  $("note").textContent = note;
+  play();
+}
+
+// ---- gallery of canned runs ----
+
+let thumbs = [];
+function gallery() {
+  const runs = PRESETS.genetic || [];
+  let best = null;
+  thumbs = [];
+  $("gallery").textContent = "";
+  for (const obj of new Set(runs.map((p) => p.object))) {
+    const label = document.createElement("div");
+    label.className = "row-label";
+    label.textContent = obj;
+    const grid = document.createElement("div");
+    grid.className = "gallery";
+    runs.forEach((p) => {
+      if (p.object !== obj) return;
+      const fig = document.createElement("figure"), c = document.createElement("canvas");
+      c.width = c.height = 160;
+      const ctx = c.getContext("2d");
+      clear(ctx);
+      paint(ctx, finalShapes(p), KEPT);
+      const cap = document.createElement("figcaption");
+      cap.textContent = `P = ${p.p.toFixed(2)}`;
+      if (p.p > TARGET) cap.className = "yes";
+      fig.append(c, cap);
+      fig.onclick = () => {
+        thumbs.forEach((t) => t.classList.remove("sel"));
+        fig.classList.add("sel");
+        show(p, `Canned run: ${p.object}, seed ${p.seed}, ${p.model}, cost $${p.cost.toFixed(5)}.`);
+      };
+      thumbs.push(fig);
+      if (!best || p.p > best.p) best = { p: p.p, fig };
+      grid.append(fig);
+    });
+    $("gallery").append(label, grid);
+  }
+  if (best) best.fig.click();  // start with the best canned run
+}
+gallery();
+
+// ---- live run ----
+
+function tally(resp) {
+  run.model = resp.model || MODEL;
+  run.cost += (resp.usage && resp.usage.cost) || 0;
+  run.calls++;
+}
+
+async function evolveLive(key, obj, st) {
+  run = { object: obj, model: MODEL, p: -1, stop: "", cost: 0, calls: 0, generations: [] };
+  const sheet = document.createElement("canvas");
+  sheet.width = COLS * CELL;
+  sheet.height = Math.ceil(POP / COLS) * CELL;
+  let cands = Array.from({ length: POP }, () => ({ shapes: randomBlocks([]), parent: null, op: "seed" })), p = -1;
+  while (!run.stop) {
+    for (let i = cands.length - 1; i > 0; i--) {  // new panel positions every generation, against position bias
+      const j = randint(0, i);
+      [cands[i], cands[j]] = [cands[j], cands[i]];
+    }
+    drawSheet(sheet.getContext("2d"), cands.map((c) => c.shapes));
+    st.textContent = `Generation ${run.generations.length + 1}: asking Jev to pick a panel…`;
+    let resp = await decide(key, sheet.toDataURL("image/png"), { pick: choiceQuestion(obj, POP) });
+    tally(resp);
+    const probs = cands.map((_, i) => resp.answers.pick.probabilities[i + 1] || 0);
+    const best = probs.indexOf(Math.max(...probs));
+    if (cands[best].op !== "elite") {  // the elite's P is already known
+      st.textContent = `Generation ${run.generations.length + 1}: asking Jev about the pick…`;
+      resp = await ask(key, cands[best].shapes, obj);
+      tally(resp);
+      p = resp.answers.is.noul;
+    }
+    run.generations.push({ candidates: cands, probs, best, p });
+    run.p = Math.max(run.p, p);
+    pos = run.generations.length;
+    render();
+    run.stop = cancelled ? "stopped" : p > TARGET ? "target" : run.generations.length >= GENERATIONS ? "generations" : "";
+    if (run.stop) break;
+    const next = [{ shapes: cands[best].shapes, parent: best, op: "elite" }];
+    while (next.length < POP) next.push(childOf(cands, probs));
+    cands = next;
+  }
+  done(st);
+}
+
+function done(st) {
+  st.textContent = `Done (${{ stopped: "stopped by you", target: "P > 0.66", generations: "30 generations" }[run.stop]}), `
+    + `${run.calls} Jev calls, cost $${run.cost.toFixed(5)}.`;
+  pos = last();
+  render();
+}
+
+let cancelled = false;
+$("stop").onclick = () => { cancelled = true; };
+$("go").onclick = async () => {
+  const key = $("key").value.trim(), obj = $("object").value.trim(), st = $("status");
+  if (!key) { st.textContent = "Enter an OpenRouter key."; return; }
+  if (!obj) { st.textContent = "Enter an object."; return; }
+  try { $("remember").checked ? localStorage.setItem("orKey", key) : localStorage.removeItem("orKey"); } catch (e) {}
+  thumbs.forEach((t) => t.classList.remove("sel"));
+  stopPlay();
+  cancelled = false;
+  $("go").disabled = true; $("stop").disabled = false;
+  $("note").textContent = `Live run: ${obj}, ${MODEL}.`;
+  try {
+    await evolveLive(key, obj, st);
+  } catch (e) {
+    st.textContent = e.message;
+  } finally {
+    $("go").disabled = false; $("stop").disabled = true;
+  }
+};
+</script>
+</body>
+</html>
