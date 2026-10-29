@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>System-One Drawer: explore</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<h1>✏️ System-One Drawer: explore</h1>
+<p class="small"><a href="../">← the alphabet</a></p>
+<p class="small">Draws an object from toy building blocks (square A×A, double square 2A×A, half square, roof with
+base 2A and height A), placed face to face. Triangles turn in quarter turns; squares and double squares can also
+sit diagonally, against a triangle's slanted face or another diagonal block. TypeSafe's Jev (via OpenRouter), a
+fast decision model, is the only judge.</p>
+<p class="small">It evolves 10 drawings at once. Each generation, Jev sees them side by side in a grid and answers a
+<code>choice</code> question: "Which panel shows a(n) &lt;object&gt;?" Its probabilities are the fitness. For the
+pick, Jev also answers a <code>noul</code> question: "The image shows a(n) &lt;object&gt;." That P tracks progress.
+The pick and the best drawing so far (highest P) carry over unchanged. The others are children of parents drawn by
+fitness: half by crossover (one parent's blocks on one side of a random cut, the other's on the other side), half
+by mutation (1-3 blocks added, or one taken away). A drawing has at most 8 blocks. A run stops at P &gt; 0.66 or after 30 generations and shows
+the best drawing.</p>
+
+<canvas id="view" width="384" height="384"></canvas>
+<p id="caption"></p>
+<div id="controls">
+  <button id="first" title="First generation">⏮</button>
+  <button id="prev" title="Previous generation">◀</button>
+  <button id="play" title="Play">▶ Play</button>
+  <button id="next" title="Next generation">▶</button>
+  <button id="last" title="Final drawing">⏭</button>
+  <input id="slider" type="range" min="1" max="1" value="1">
+</div>
+<canvas id="sheet" width="1000" height="400"></canvas>
+<svg id="chart" viewBox="0 0 384 90" preserveAspectRatio="none" aria-label="P of each generation's pick"></svg>
+<p id="note" class="small"></p>
+
+<h2>Canned drawings</h2>
+<div id="gallery"></div>
+
+<h2>Draw your own</h2>
+<p class="small">Type any object and draw it live with your own OpenRouter key. A run makes up to 60 Jev calls
+and costs well under one cent.</p>
+<label for="object">Object</label>
+<input id="object" type="text" value="house" list="ideas">
+<datalist id="ideas"><option value="house"><option value="rocket"><option value="flagpole with flag">
+<option value="house and tree"><option value="man with hat"><option value="boat"><option value="tower"><option value="castle">
+<option value="robot"><option value="elephant"></datalist>
+<label for="key">OpenRouter API key</label>
+<input id="key" type="password" placeholder="sk-or-v1-..." autocomplete="off">
+<label><input id="remember" type="checkbox"> remember key in this browser</label>
+<button id="go">Draw</button>
+<button id="stop" disabled>Stop</button>
+<p id="status" class="small"></p>
+
+<p class="small">Your key and the drawings go only to openrouter.ai. Canned drawings come from
+<code>run_examples.py</code>, which runs the same loop.
+Code: <a href="https://github.com/willirath/2026_system-one-drawer">github.com/willirath/2026_system-one-drawer</a></p>
+
+<script src="presets-objects.js"></script>
+<script>
+const DRAWER = {
+  runs: PRESETS.genetic,
+  letters: false,
+  object: () => document.getElementById("object").value.trim() || null,
+  hint: "Enter an object.",
+};
+</script>
+<script src="../drawer.js"></script>
+</body>
+</html>

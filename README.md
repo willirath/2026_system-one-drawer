@@ -1,7 +1,8 @@
 # System-One Drawer
 
-A static page that draws an object from toy building blocks, with TypeSafe's Jev
-(through OpenRouter) as the only judge. Jev is a fast decision model: it answers
+A static page that draws the alphabet from toy building blocks, with TypeSafe's
+Jev (through OpenRouter) as the only judge. An explore page does the same for
+any object. Jev is a fast decision model: it answers
 typed questions about an image with probabilities and gives no reasons.
 
 Blocks are a square (A x A), a double square (2A x A), a half square (legs A,
@@ -30,12 +31,12 @@ result is the best drawing.
 
 ## Web app
 
-[public/index.html](public/index.html) is the whole app. It replays canned runs
-step by step, for objects (house, rocket, flagpole with flag) and for the
-alphabet (the best of 3 runs per capital letter), and draws any object you
-type, live, with your own OpenRouter key. `#alphabet` in the URL opens the
-alphabet. The key goes straight from the browser to
-openrouter.ai.
+The page shows the alphabet: [public/index.html](public/index.html) replays the
+best canned run per capital letter step by step and draws any letter live, with
+your own OpenRouter key. The key goes straight from the browser to openrouter.ai.
+[public/explore/](public/explore/index.html) does the same for objects (house,
+rocket, flagpole with flag) and draws anything you type. Both pages share
+[public/drawer.js](public/drawer.js) and [public/style.css](public/style.css).
 
 GitHub Pages serves `public/` via
 [.github/workflows/pages.yml](.github/workflows/pages.yml), and GitLab Pages via
@@ -45,15 +46,15 @@ GitHub Pages serves `public/` via
 
 ```bash
 cp .env.template .env                 # then paste an OpenRouter key
-uv run run_examples.py genetic 8      # 8 runs each of house, rocket, flagpole with flag
 uv run run_examples.py alphabet 3     # 3 runs each of "capital letter A" ... "capital letter Z"
+uv run run_examples.py genetic 8      # explore/: 8 runs each of house, rocket, flagpole with flag
 uv run run_examples.py genetic-nox 8  # without crossover, for comparison
 uv run run_examples.py genetic 3 dog  # or: mode, runs per object, objects
 ```
 
-The default genetic runs go to `public/presets-genetic.js`. The alphabet's best
-run per letter goes to `public/presets-alphabet.js`, all its runs to
-`results/presets-alphabet-all.json`. Everything else goes to
+The alphabet's best run per letter goes to `public/presets-alphabet.js`, all its
+runs to `results/presets-alphabet-all.json`. The default genetic runs go to
+`public/explore/presets-objects.js`. Everything else goes to
 `results/presets-<mode>[-<objects>].json`. Final drawings land in
 `results/<mode>/`.
 

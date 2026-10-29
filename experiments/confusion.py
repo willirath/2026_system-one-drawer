@@ -45,8 +45,8 @@ def final(run):
 
 
 def load(mode):
-    js, js_json = Path(f"public/presets-{mode}.js"), Path(f"results/presets-{mode}.json")
-    if js.exists():
+    js, js_json = Path(rx.PUBLIC.get(mode, "-")), Path(f"results/presets-{mode}.json")
+    if js.is_file():
         return json.loads(js.read_text().split(f"PRESETS.{mode} = ")[1].rstrip().rstrip(";"))
     return json.loads(js_json.read_text()) if js_json.exists() else []
 

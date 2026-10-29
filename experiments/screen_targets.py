@@ -32,7 +32,7 @@ TARGETS = [
 
 
 def presets(mode):
-    text = Path(f"public/presets-{mode}.js").read_text()
+    text = Path(rx.PUBLIC.get(mode, "")).read_text()
     return json.loads(text.split(f"PRESETS.{mode} = ")[1].rstrip().rstrip(";"))
 
 

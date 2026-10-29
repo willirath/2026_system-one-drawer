@@ -1,0 +1,31 @@
+/* Shared by the alphabet page and explore/. */
+:root { --bg: #fff; --fg: #111; --muted: #666; --yes: #1a7f37; --no: #c62828; --border: #ccc; --paper: #fff; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #121212; --fg: #eee; --muted: #999; --yes: #4caf50; --no: #ef5350; --border: #444; }
+}
+body { background: var(--bg); color: var(--fg); font: 16px/1.5 system-ui, sans-serif;
+       max-width: 44rem; margin: 0 auto; padding: 1rem; }
+h1 { margin: 0.5rem 0; }
+h2 { font-size: 1.1rem; margin: 1.5rem 0 0.5rem; }
+p.small { color: var(--muted); font-size: 0.85rem; }
+p.small a { color: inherit; }
+label { display: block; margin-top: 0.75rem; font-weight: 600; }
+input[type=password], input[type=text] { width: 100%; box-sizing: border-box; padding: 0.4rem;
+       border: 1px solid var(--border); background: var(--bg); color: var(--fg); }
+button { margin-top: 0.5rem; padding: 0.4rem 1rem; font-size: 1rem; cursor: pointer; }
+canvas { background: var(--paper); border: 1px solid var(--border); display: block; }
+input.letter { width: 4rem; text-align: center; font-size: 1.5rem; text-transform: uppercase; }
+#view { width: 100%; max-width: 384px; height: auto; aspect-ratio: 1; }
+#controls { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+#controls button { margin: 0.5rem 0 0; padding: 0.3rem 0.7rem; }
+#slider { flex: 1; min-width: 8rem; margin-top: 0.5rem; }
+#caption { font-size: 1.2rem; font-weight: 700; margin: 0.5rem 0 0; min-height: 1.8rem; }
+.yes { color: var(--yes); } .no { color: var(--no); }
+#chart { width: 100%; max-width: 384px; height: 90px; display: block; margin-top: 0.5rem; }
+.gallery { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.4rem; }
+.gallery figure { margin: 0; cursor: pointer; text-align: center; font-size: 0.75rem; color: var(--muted); }
+.gallery canvas { width: 100%; height: auto; aspect-ratio: 1; }
+.gallery figure.sel canvas { outline: 3px solid var(--yes); }
+.row-label { font-weight: 600; margin: 0.75rem 0 0.25rem; }
+#sheet { width: 100%; height: auto; aspect-ratio: 5 / 2; margin-top: 0.75rem; }
+.gallery.letters { grid-template-columns: repeat(7, 1fr); }

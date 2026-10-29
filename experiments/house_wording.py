@@ -4,7 +4,7 @@
 # ///
 """Does the wording of the target help? "house" vs "simple house" etc.
 
-Needs the canned house runs (public/presets-genetic.js) and
+Needs the canned house runs (public/explore/presets-objects.js) and
 
     uv run run_examples.py genetic 8 "simple house" "schematic house" "drawing of a house"
 
@@ -33,7 +33,7 @@ WORDINGS = ["house", "simple house", "schematic house", "drawing of a house"]
 
 
 def main():
-    canned = json.loads(Path("public/presets-genetic.js").read_text().split("PRESETS.genetic = ")[1].rstrip().rstrip(";"))
+    canned = json.loads(Path(rx.PUBLIC["genetic"]).read_text().split("PRESETS.genetic = ")[1].rstrip().rstrip(";"))
     variants = json.loads(Path("results/presets-genetic-simple_house-schematic_house-drawing_of_a_house.json").read_text())
     items = [(r["object"], r["p"], r["stop"], final(r)) for r in canned + variants if r["object"] in WORDINGS]
     rng = random.Random(11)
