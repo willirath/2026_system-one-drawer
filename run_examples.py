@@ -43,7 +43,7 @@ SIZE = 384
 TARGET = 0.66
 FILL = (0, 0, 0, 178)  # black at 70% opacity, same as the web app
 # distinct shapes that score low on random drawings but reachably high on good ones (experiments/screen_targets.py)
-OBJECTS = ["house", "rocket", "boat"]
+OBJECTS = ["house", "rocket", "flagpole with flag"]
 GRID = 24  # blocks live on a GRID x GRID canvas in grid units; a block side A is 2 units
 # kind: (width, height, flat faces as [top, right, bottom, left]) when not rotated
 BLOCKS = {

@@ -79,12 +79,12 @@ def main():
         if not sel:
             continue
         print(f"\n{mode}: rows = drawn as, columns = Jev's choice (count), then mean P(drawn-as class)")
-        print(f"{'':8s}" + "".join(f"{c:>8s}" for c in CLASSES) + f"{'P(own)':>9s}")
+        print(f"{'':8s}" + "".join(f"{c[:7]:>8s}" for c in CLASSES) + f"{'P(own)':>9s}")
         for o in sorted({r["drawn_as"] for r in sel}, key=lambda o: (o == "-", o)):
             rs = [r for r in sel if r["drawn_as"] == o]
             counts = "".join(f"{sum(r['choice'] == c for r in rs):8d}" for c in CLASSES)
             own = f"{sum(r[o] for r in rs) / len(rs):9.2f}" if o in rx.OBJECTS else ""
-            print(f"{o:8s}{counts}{own}")
+            print(f"{o[:8]:8s}{counts}{own}")
         if mode != "random":
             hits = sum(r["choice"] == r["drawn_as"] for r in sel)
             print(f"accuracy {hits}/{len(sel)}")

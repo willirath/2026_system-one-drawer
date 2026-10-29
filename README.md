@@ -26,7 +26,7 @@ result is the best drawing.
 ## Web app
 
 [public/index.html](public/index.html) is the whole app. It replays the canned
-runs for house, rocket and boat step by step, and draws any object you type,
+runs for house, rocket and flagpole with flag step by step, and draws any object you type,
 live, with your own OpenRouter key. The key goes straight from the browser to
 openrouter.ai.
 
@@ -38,7 +38,7 @@ GitHub Pages serves `public/` via
 
 ```bash
 cp .env.template .env                 # then paste an OpenRouter key
-uv run run_examples.py genetic 8      # 8 runs each of house, rocket, boat
+uv run run_examples.py genetic 8      # 8 runs each of house, rocket, flagpole with flag
 uv run run_examples.py genetic-nox 8  # without crossover, for comparison
 uv run run_examples.py genetic 3 dog  # or: mode, runs per object, objects
 ```
@@ -51,21 +51,23 @@ to `results/presets-<mode>[-<objects>].json`. Final drawings land in
 
 Canned runs, 12A x 12A canvas, 8 runs per target:
 
-| target | final P   | P > 0.66 | named correctly |
-|--------|-----------|----------|-----------------|
-| house  | 0.37-0.77 | 5 of 8   | 6 of 8          |
-| rocket | 0.61-0.71 | 7 of 8   | 8 of 8          |
-| boat   | 0.50-0.73 | 4 of 8   | 4 of 8          |
-| total  |           | 16 of 24 | 18 of 24        |
+| target             | final P   | P > 0.66 | named correctly |
+|--------------------|-----------|----------|-----------------|
+| house              | 0.45-0.73 | 4 of 8   | 6 of 8          |
+| rocket             | 0.58-0.76 | 6 of 8   | 8 of 8          |
+| flagpole with flag | 0.50-0.73 | 1 of 8   | 2 of 8          |
+| total              |           | 11 of 24 | 16 of 24        |
 
-868 Jev calls, $0.047. "Named correctly" comes from
-[experiments/confusion.py](experiments/confusion.py) (see below). The bigger
-canvas (blocks two-thirds the size) mainly helped boat, which had no hits on the
-8A x 8A canvas and now gets a hull with a sail. Some rockets are messy piles
-that still pass: random drawings come out as rocket 12 times in 24.
+807 Jev calls, $0.045. "Named correctly" comes from
+[experiments/confusion.py](experiments/confusion.py) (see below). The flagpoles
+do look like a pole with a triangular flag, but Jev names 6 of 8 of them
+"rocket": a tall bar with a triangle on top reads as both. Some rockets are
+messy piles that still pass, since random drawings come out as rocket 12 times
+in 24. On the same canvas, boat reached P > 0.66 in 4 of 8 runs (0 of 8 on the
+8A canvas).
 
-The comparisons below ran on the earlier 8A x 8A canvas. Final P, and how many
-runs reached P > 0.66. "Random walk"
+The comparisons below ran on the earlier 8A x 8A canvas with house, rocket and
+boat. Final P, and how many runs reached P > 0.66. "Random walk"
 is an earlier mode, since removed: each try added 1-3 blocks and was kept unless
 P went down, for up to 80 tries.
 
