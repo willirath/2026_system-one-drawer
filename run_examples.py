@@ -44,7 +44,7 @@ TARGET = 0.66
 FILL = (0, 0, 0, 178)  # black at 70% opacity, same as the web app
 # distinct shapes that score low on random drawings but reachably high on good ones (experiments/screen_targets.py)
 OBJECTS = ["house", "rocket", "boat"]
-GRID = 16  # blocks live on a GRID x GRID canvas in grid units; a block side A is 2 units
+GRID = 24  # blocks live on a GRID x GRID canvas in grid units; a block side A is 2 units
 # kind: (width, height, flat faces as [top, right, bottom, left]) when not rotated
 BLOCKS = {
     "square": (2, 2, [1, 1, 1, 1]),  # A x A
@@ -109,7 +109,7 @@ def random_block(rng, kept):
             else:  # place left or right
                 x, y = ax + aw if side == 1 else ax - w, rng.randint(ay - h + 1, ay + ah - 1)
         else:
-            x, y = rng.randint(4, GRID - 4 - w), rng.randint(4, GRID - 4 - h)
+            x, y = rng.randint(GRID // 2 - 4, GRID // 2 + 4 - w), rng.randint(GRID // 2 - 4, GRID // 2 + 4 - h)  # near the centre
         new["box"] = [x, y, w, h]
         if x < 0 or y < 0 or x + w > GRID or y + h > GRID or any(overlap(new, b) for b in kept):
             continue

@@ -5,7 +5,7 @@ A static page that draws an object from toy building blocks, with TypeSafe's Jev
 typed questions about an image with probabilities and gives no reasons.
 
 Blocks are a square (A x A), a double square (2A x A), a half square (legs A,
-long side sqrt(2) A) and a roof (base 2A, height A), on an 8A x 8A canvas. They
+long side sqrt(2) A) and a roof (base 2A, height A), on a 12A x 12A canvas. They
 turn in quarter turns and only meet flat face to flat face, overlapping by at
 least A/2. Slanted faces don't attach.
 
@@ -49,7 +49,23 @@ to `results/presets-<mode>[-<objects>].json`. Final drawings land in
 
 ## Results (2026-10-29, `typesafe/jev-1.14`)
 
-8 runs per target. Final P, and how many runs reached P > 0.66. "Random walk"
+Canned runs, 12A x 12A canvas, 8 runs per target:
+
+| target | final P   | P > 0.66 | named correctly |
+|--------|-----------|----------|-----------------|
+| house  | 0.37-0.77 | 5 of 8   | 6 of 8          |
+| rocket | 0.61-0.71 | 7 of 8   | 8 of 8          |
+| boat   | 0.50-0.73 | 4 of 8   | 4 of 8          |
+| total  |           | 16 of 24 | 18 of 24        |
+
+868 Jev calls, $0.047. "Named correctly" comes from
+[experiments/confusion.py](experiments/confusion.py) (see below). The bigger
+canvas (blocks two-thirds the size) mainly helped boat, which had no hits on the
+8A x 8A canvas and now gets a hull with a sail. Some rockets are messy piles
+that still pass: random drawings come out as rocket 12 times in 24.
+
+The comparisons below ran on the earlier 8A x 8A canvas. Final P, and how many
+runs reached P > 0.66. "Random walk"
 is an earlier mode, since removed: each try added 1-3 blocks and was kept unless
 P went down, for up to 80 tries.
 
@@ -63,7 +79,8 @@ P went down, for up to 80 tries.
 
 Can Jev tell the final drawings apart? [experiments/confusion.py](experiments/confusion.py)
 asks one `choice` question per final drawing: house, rocket, boat or something
-else. Rows are what the genetic drawing was made for, columns Jev's answer:
+else. Rows are what the genetic drawing (8A canvas) was made for, columns Jev's
+answer:
 
 | genetic | house | rocket | boat | other |
 |---------|-------|--------|------|-------|

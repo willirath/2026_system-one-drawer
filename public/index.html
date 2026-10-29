@@ -90,7 +90,7 @@ const SIZE = 384, TARGET = 0.66;
 const KEPT = "rgba(0,0,0,0.7)";
 // Blocks live on a GRID x GRID canvas in grid units; a block side A is 2 units.
 // kind: [width, height, flat faces as [top, right, bottom, left]] when not rotated
-const GRID = 16;
+const GRID = 24;
 const BLOCKS = {
   square: [2, 2, [1, 1, 1, 1]],  // A x A
   double: [4, 2, [1, 1, 1, 1]],  // 2A x A
@@ -149,7 +149,7 @@ function randomBlock(kept) {
       if (!flat(a, side) || !flat(block, (side + 2) % 4)) continue;
       if (side === 0 || side === 2) { x = randint(ax - w + 1, ax + aw - 1); y = side === 0 ? ay - h : ay + ah; }
       else { x = side === 1 ? ax + aw : ax - w; y = randint(ay - h + 1, ay + ah - 1); }
-    } else { x = randint(4, GRID - 4 - w); y = randint(4, GRID - 4 - h); }
+    } else { x = randint(GRID / 2 - 4, GRID / 2 + 4 - w); y = randint(GRID / 2 - 4, GRID / 2 + 4 - h); }  // near the centre
     if (x < 0 || y < 0 || x + w > GRID || y + h > GRID) continue;
     block.box = [x, y, w, h];
     if (kept.some((b) => overlap(block, b))) continue;
