@@ -14,11 +14,37 @@ sit diagonally, against a triangle's slanted face or another diagonal block. Typ
 fast decision model, is the only judge.</p>
 
 <nav id="tabs">
-  <button data-tab="alphabet" class="on">Alphabet</button>
-  <button data-tab="word">Word</button>
+  <button data-tab="word" class="on">Word</button>
+  <button data-tab="alphabet">Alphabet</button>
 </nav>
 
-<section id="tab-alphabet">
+<section id="tab-word">
+<p class="small">Type up to 7 letters or digits. Like a font, every distinct character is one letter run, as in the
+Alphabet tab, and repeated characters share it. The animation plays them side by side: Jev's pick for each character in each generation, letters that changed in
+green, and at the end the best drawing of each. Without a key it plays the canned runs from the alphabet.
+<b>Evolve</b> runs a fresh evolution for every distinct character, all in parallel.</p>
+<label for="wordtext">Word</label>
+<input id="wordtext" class="word" type="text" value="SYSTEM1" maxlength="7" autocomplete="off">
+<canvas id="wordview" width="768" height="384"></canvas>
+<p id="wordcaption"></p>
+<p id="wordps" class="small"></p>
+<div class="controls">
+  <button id="wfirst" title="First generation">⏮</button>
+  <button id="wprev" title="Previous generation">◀</button>
+  <button id="wplay" title="Play">▶ Play</button>
+  <button id="wnext" title="Next generation">▶</button>
+  <button id="wlast" title="Final word">⏭</button>
+  <input id="wslider" type="range" min="1" max="1" value="1">
+</div>
+<svg id="wchart" class="chart" viewBox="0 0 384 90" preserveAspectRatio="none" aria-label="P of each generation's pick"></svg>
+<p class="small">Evolve with your OpenRouter key (below). Each distinct character makes up to 60 Jev calls; a
+7-letter word costs at most about two cents.</p>
+<button id="evolve">Evolve</button>
+<button id="wstop" disabled>Stop</button>
+<p id="wstatus" class="small"></p>
+</section>
+
+<section id="tab-alphabet" hidden>
 <p class="small">Each letter evolves as 10 drawings at once. Each generation, Jev sees them side by side in a grid
 and answers a <code>choice</code> question: "Which panel shows a capital letter X?" Its probabilities are the
 fitness. For the pick, Jev also answers a <code>noul</code> question: "The image shows a capital letter X." That P
@@ -55,31 +81,6 @@ calls and costs well under one cent.</p>
 <p id="status" class="small"></p>
 </section>
 
-<section id="tab-word" hidden>
-<p class="small">Type up to 7 letters or digits. Every character is its own letter run, as in the Alphabet tab, and
-the animation plays them side by side: Jev's pick for each character in each generation, letters that changed in
-green, and at the end the best drawing of each. Without a key it plays the canned runs from the alphabet.
-<b>Evolve</b> runs a fresh evolution for every character, all in parallel.</p>
-<label for="wordtext">Word</label>
-<input id="wordtext" class="word" type="text" value="SYSTEM1" maxlength="7" autocomplete="off">
-<canvas id="wordview" width="768" height="384"></canvas>
-<p id="wordcaption"></p>
-<p id="wordps" class="small"></p>
-<div class="controls">
-  <button id="wfirst" title="First generation">⏮</button>
-  <button id="wprev" title="Previous generation">◀</button>
-  <button id="wplay" title="Play">▶ Play</button>
-  <button id="wnext" title="Next generation">▶</button>
-  <button id="wlast" title="Final word">⏭</button>
-  <input id="wslider" type="range" min="1" max="1" value="1">
-</div>
-<svg id="wchart" class="chart" viewBox="0 0 384 90" preserveAspectRatio="none" aria-label="P of each generation's pick"></svg>
-<p class="small">Evolve with your OpenRouter key (below). Each character makes up to 60 Jev calls; a 7-letter word
-costs about two cents.</p>
-<button id="evolve">Evolve</button>
-<button id="wstop" disabled>Stop</button>
-<p id="wstatus" class="small"></p>
-</section>
 
 <h2>Your OpenRouter key</h2>
 <label for="key">OpenRouter API key</label>
@@ -106,16 +107,16 @@ const DRAWER = {
 <script src="drawer.js"></script>
 <script src="words.js"></script>
 <script>
-// Tabs: #word in the URL opens the word tab.
+// Tabs: the word tab by default, #alphabet in the URL opens the alphabet tab.
 function tab(name) {
   document.querySelectorAll("#tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === name));
   document.querySelectorAll("section[id^=tab-]").forEach((s) => { s.hidden = s.id !== `tab-${name}`; });
-  history.replaceState(null, "", name === "word" ? "#word" : location.pathname);
+  history.replaceState(null, "", name === "alphabet" ? "#alphabet" : location.pathname);
   if (name === "word") { stopPlay(); if (wrun && wcount() && !wtimer) { wpos = 0; wplay(); } }
   else wstopPlay();
 }
 document.querySelectorAll("#tabs button").forEach((b) => { b.onclick = () => tab(b.dataset.tab); });
-if (location.hash === "#word") tab("word");
+tab(location.hash === "#alphabet" ? "alphabet" : "word");
 </script>
 </body>
 </html>

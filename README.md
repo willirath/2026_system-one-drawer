@@ -36,13 +36,14 @@ best canned run per capital letter and digit step by step and draws any letter
 live, with your own OpenRouter key. The key goes straight from the browser to
 openrouter.ai.
 
-The Word tab ([public/words.js](public/words.js), `#word` in the URL) writes a
-word of up to 7 letters or digits. Every character is its own letter run, and
-the tab animates them side by side: Jev's pick for each character in each
+The Word tab ([public/words.js](public/words.js), the default; `#alphabet` opens
+the Alphabet tab) writes a
+word of up to 7 letters or digits. Like a font, every distinct character is one
+letter run, shared by its repeats, and the tab animates them side by side: Jev's pick for each character in each
 generation, changed letters in green, and at the end the best drawing of each.
 Without a key it plays the canned alphabet runs, so any word animates for free.
-Evolve runs a fresh evolution for every character, all in parallel (about two
-cents for 7 characters).
+Evolve runs a fresh evolution for every distinct character, all in parallel (at
+most about two cents for 7 characters).
 
 [public/explore/](public/explore/index.html) does the same for objects (house,
 rocket, flagpole with flag) and draws anything you type. Both pages share

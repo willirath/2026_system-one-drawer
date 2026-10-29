@@ -1,6 +1,7 @@
-// Word tab: every character of a word is its own letter run (the canned ones from the alphabet, or
-// fresh ones evolved in parallel with your key), and the tab animates them side by side, one
-// generation at a time. Uses the runs, painting and API helpers of drawer.js.
+// Word tab: like a font, every distinct character of a word is one letter run, shared by its
+// repeats (the canned runs from the alphabet, or fresh ones evolved in parallel with your key),
+// and the tab animates them side by side, one generation at a time. Uses the runs, painting and
+// API helpers of drawer.js.
 const MAX_WORD = 7, GAP = 2;  // GAP: space between letters, in grid units
 const WORD_W = 768, WORD_H = 384;
 const CHANGED = "rgba(26,127,55,0.85)";  // letters that changed since the previous generation
@@ -26,7 +27,7 @@ function paintWord(ctx, word, x, y, w, h, fills = []) {
   });
 }
 
-// ---- player: a word run is { object, runs: one letter run per character } ----
+// ---- player: a word run is { object, runs: the letter run of each position; repeats share one } ----
 
 let wrun = null, wpos = 1, wtimer = null;
 const wcount = () => Math.max(0, ...wrun.runs.map((r) => r.generations.length));  // generations so far
@@ -119,7 +120,7 @@ function setWord() {
 $("wordtext").oninput = setWord;
 setWord();
 
-// ---- live run: one letter run per character, all at once ----
+// ---- live run: one letter run per distinct character, all at once ----
 
 let wordCancelled = false;
 $("wstop").onclick = () => { wordCancelled = true; };
@@ -132,17 +133,19 @@ $("evolve").onclick = async () => {
   wstopPlay();
   wordCancelled = false;
   $("evolve").disabled = true; $("wstop").disabled = false; $("wordtext").disabled = true;
-  const chars = [...text];
-  wrun = { object: text, runs: chars.map(() => ({ generations: [], p: -1, calls: 0, cost: 0 })) };
+  const chars = [...text], glyphs = [...new Set(chars)];
+  const empty = Object.fromEntries(glyphs.map((c) => [c, { generations: [], p: -1, calls: 0, cost: 0 }]));
+  wrun = { object: text, runs: chars.map((c) => empty[c]) };
   wpos = 1;
   wrender();
-  st.textContent = `Evolving ${chars.length} characters in parallel…`;
+  const what = `${glyphs.length} character${glyphs.length > 1 ? "s" : ""}`;
+  st.textContent = `Evolving ${what} in parallel…`;
   try {
-    const runs = await Promise.all(chars.map((c, i) => evolve(key, objectOf(c), (r) => {
-      wrun.runs[i] = r;
+    const runs = await Promise.all(glyphs.map((c) => evolve(key, objectOf(c), (r) => {
+      chars.forEach((d, i) => { if (d === c) wrun.runs[i] = r; });  // repeats share the glyph
       wpos = wcount();
       wrender();
-      st.textContent = `Evolving ${chars.length} characters in parallel: generation ${wcount()}…`;
+      st.textContent = `Evolving ${what} in parallel: generation ${wcount()}…`;
     }, () => wordCancelled)));
     const stops = [...new Set(runs.map((r) => STOPS[r.stop]))].join(", ");
     st.textContent = `Done (${stops}), ${runs.reduce((a, r) => a + r.calls, 0)} Jev calls, `
