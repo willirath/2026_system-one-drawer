@@ -12,17 +12,24 @@
 base 2A and height A), placed face to face. Triangles turn in quarter turns; squares and double squares can also
 sit diagonally, against a triangle's slanted face or another diagonal block. TypeSafe's Jev (via OpenRouter), a
 fast decision model, is the only judge.</p>
-<p class="small">It evolves 10 drawings at once. Each generation, Jev sees them side by side in a grid and answers a
-<code>choice</code> question: "Which panel shows a capital letter X?" Its probabilities are the fitness. For the
-pick, Jev also answers a <code>noul</code> question: "The image shows a capital letter X." That P tracks progress.
-The pick and the best drawing so far (highest P) carry over unchanged. The others are children of parents drawn by
-fitness: half by crossover (one parent's blocks on one side of a random cut, the other's on the other side), half
-by mutation (1-3 blocks added, or one taken away). A drawing has at most 8 blocks. A run stops at P &gt; 0.66 or after 30 generations and shows
-the best drawing.</p>
+
+<nav id="tabs">
+  <button data-tab="alphabet" class="on">Alphabet</button>
+  <button data-tab="word">Word</button>
+</nav>
+
+<section id="tab-alphabet">
+<p class="small">Each letter evolves as 10 drawings at once. Each generation, Jev sees them side by side in a grid
+and answers a <code>choice</code> question: "Which panel shows a capital letter X?" Its probabilities are the
+fitness. For the pick, Jev also answers a <code>noul</code> question: "The image shows a capital letter X." That P
+tracks progress. The pick and the best drawing so far (highest P) carry over unchanged. The others are children of
+parents drawn by fitness: half by crossover (one parent's blocks on one side of a random cut, the other's on the
+other side), half by mutation (1-3 blocks added, or one taken away). A drawing has at most 8 blocks. A run stops at
+P &gt; 0.66 or after 30 generations and shows the best drawing.</p>
 
 <canvas id="view" width="384" height="384"></canvas>
 <p id="caption"></p>
-<div id="controls">
+<div id="controls" class="controls">
   <button id="first" title="First generation">⏮</button>
   <button id="prev" title="Previous generation">◀</button>
   <button id="play" title="Play">▶ Play</button>
@@ -38,38 +45,53 @@ the best drawing.</p>
 <p class="small">The best of 3 runs per capital letter and digit. Click one to replay it.</p>
 <div id="gallery"></div>
 
-<h2>Write a word</h2>
-<p class="small">Type up to 7 letters or digits: the word is set from the alphabet above. With your OpenRouter key
-(below), <b>Evolve</b> improves the word as a whole: 10 versions at once, each changing one letter or mixing
-letters from two parents. Jev picks from a grid, "Which panel shows the word …?", and its <code>noul</code> P on
-"The image shows the word …" tracks progress, up to 30 generations.</p>
-<label for="word">Word</label>
-<input id="word" class="word" type="text" value="SYSTEM1" maxlength="7" autocomplete="off">
-<canvas id="wordview" width="768" height="256"></canvas>
-<p id="wordcaption"></p>
-<button id="evolve">Evolve</button>
-<button id="wstop" disabled>Stop</button>
-<p id="wstatus" class="small"></p>
-<canvas id="wordsheet" width="960" height="800" hidden></canvas>
-
 <h2>Draw a letter</h2>
-<p class="small">Pick a letter or digit and draw it live with your own OpenRouter key. A run makes up to 60 Jev calls and
-costs well under one cent.</p>
+<p class="small">Pick a letter or digit and draw it live with your OpenRouter key (below). A run makes up to 60 Jev
+calls and costs well under one cent.</p>
 <label for="letter">Letter</label>
 <input id="letter" class="letter" type="text" value="A" maxlength="1" autocomplete="off">
-<label for="key">OpenRouter API key</label>
-<input id="key" type="password" placeholder="sk-or-v1-..." autocomplete="off">
-<label><input id="remember" type="checkbox"> remember key in this browser</label>
 <button id="go">Draw</button>
 <button id="stop" disabled>Stop</button>
 <p id="status" class="small"></p>
+</section>
+
+<section id="tab-word" hidden>
+<p class="small">Type up to 7 letters or digits: the word is set from the alphabet's best letters. <b>Evolve</b>
+then improves the word as a whole: 10 versions at once, each changing one letter or mixing letters from two
+parents. Jev picks from a grid, "Which panel shows the word …?", and its <code>noul</code> P on "The image shows
+the word …" tracks progress, up to 30 generations. The animation shows Jev's pick in each generation; letters that
+changed are green.</p>
+<label for="word">Word</label>
+<input id="word" class="word" type="text" value="SYSTEM1" maxlength="7" autocomplete="off">
+<canvas id="wordview" width="768" height="384"></canvas>
+<p id="wordcaption"></p>
+<div class="controls">
+  <button id="wfirst" title="First generation">⏮</button>
+  <button id="wprev" title="Previous generation">◀</button>
+  <button id="wplay" title="Play">▶ Play</button>
+  <button id="wnext" title="Next generation">▶</button>
+  <button id="wlast" title="Final word">⏭</button>
+  <input id="wslider" type="range" min="1" max="1" value="1">
+</div>
+<svg id="wchart" class="chart" viewBox="0 0 384 90" preserveAspectRatio="none" aria-label="P of each generation's pick"></svg>
+<p class="small">Evolve with your OpenRouter key (below). A run makes up to 60 Jev calls and costs well under one cent.</p>
+<button id="evolve">Evolve</button>
+<button id="wstop" disabled>Stop</button>
+<p id="wstatus" class="small"></p>
+</section>
+
+<h2>Your OpenRouter key</h2>
+<label for="key">OpenRouter API key</label>
+<input id="key" type="password" placeholder="sk-or-v1-..." autocomplete="off">
+<label><input id="remember" type="checkbox"> remember key in this browser</label>
 
 <p class="small">Your key and the drawings go only to openrouter.ai. Canned drawings come from
-<code>run_examples.py</code>, which runs the same loop. <a href="explore/">Explore</a> other objects (house,
+<code>run_examples.py</code>, which runs the same loops. <a href="explore/">Explore</a> other objects (house,
 rocket, flagpole) and draw anything you type.
 Code: <a href="https://github.com/willirath/2026_system-one-drawer">github.com/willirath/2026_system-one-drawer</a></p>
 
 <script src="presets-alphabet.js"></script>
+<script src="presets-words.js"></script>
 <script>
 const DRAWER = {
   runs: PRESETS.alphabet,
@@ -83,5 +105,17 @@ const DRAWER = {
 </script>
 <script src="drawer.js"></script>
 <script src="words.js"></script>
+<script>
+// Tabs: #word in the URL opens the word tab.
+function tab(name) {
+  document.querySelectorAll("#tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === name));
+  document.querySelectorAll("section[id^=tab-]").forEach((s) => { s.hidden = s.id !== `tab-${name}`; });
+  history.replaceState(null, "", name === "word" ? "#word" : location.pathname);
+  if (name === "word") { stopPlay(); if (wrun.frames.length && !wtimer) { wpos = 0; wplay(); } }
+  else wstopPlay();
+}
+document.querySelectorAll("#tabs button").forEach((b) => { b.onclick = () => tab(b.dataset.tab); });
+if (location.hash === "#word") tab("word");
+</script>
 </body>
 </html>

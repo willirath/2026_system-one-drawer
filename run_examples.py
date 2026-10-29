@@ -10,7 +10,8 @@ capital letters A-Z and the digits 0-9), or `genetic-nox` (objects without cross
 comparison). Defaults: 5 runs of each object. Default `alphabet` runs put the
 best run per letter in public/presets-alphabet.js (the main page) and all runs in
 results/presets-alphabet-all.json; default `genetic` runs go to
-public/explore/presets-objects.js.
+public/explore/presets-objects.js. `word` evolves whole words (WORDS) from the
+best canned letters; its best run per word goes to public/presets-words.js.
 Anything else goes to results/presets-<mode>[-<objects>].json.
 
 Drawings are made of toy building blocks (square, double square, half square,
@@ -52,8 +53,9 @@ FILL = (0, 0, 0, 178)  # black at 70% opacity, same as the web app
 # distinct shapes that score low on random drawings but reachably high on good ones (experiments/screen_targets.py)
 OBJECTS = ["house", "rocket", "flagpole with flag"]
 LETTERS = [f"capital letter {c}" for c in "ABCDEFGHIJKLMNOPQRSTUVWXYZ"] + [f"digit {d}" for d in range(10)]
-SETS = {"genetic": OBJECTS, "genetic-nox": OBJECTS, "alphabet": LETTERS}
-PUBLIC = {"alphabet": "public/presets-alphabet.js", "genetic": "public/explore/presets-objects.js"}
+WORDS = ["SYSTEM1"]
+SETS = {"genetic": OBJECTS, "genetic-nox": OBJECTS, "alphabet": LETTERS, "word": WORDS}
+PUBLIC = {"alphabet": "public/presets-alphabet.js", "genetic": "public/explore/presets-objects.js", "word": "public/presets-words.js"}
 GRID = 24  # blocks live on a GRID x GRID canvas in grid units; a block side A is 2 units
 # kind: unrotated outline in grid units, all wound the same way so that faces that
 # touch run in opposite directions, and the turns it may take in 45 degree steps
@@ -72,6 +74,8 @@ P_CROSS = 0.5  # chance that a child comes from crossover instead of mutation
 P_REMOVE = 0.3  # chance that a mutation takes a block away instead of adding 1-3
 MAX_BLOCKS = 8  # hard cap per drawing
 COLS, CELL, BORDER = 5, 200, 4  # grid sheet for the choice question, in pixels
+WORD_W, WORD_H, GAP = 768, 384, 2  # word image in pixels; GAP between letters in grid units
+WCOLS, WCELL_W, WCELL_H = 2, 480, 160  # grid sheet for words, in pixels
 
 
 def question(obj):
@@ -339,17 +343,131 @@ def evolve(client, mode, obj, seed):
     return {"object": obj, "seed": seed, "model": resp.get("model", MODEL), "p": p, "stop": stop, "cost": cost, "calls": calls, "generations": gens}
 
 
+def word_layer(draw, word, x, y, w, h):
+    """Draw a word (one block list per letter) into the box x, y, w, h: letters side by side,
+    cropped to their outlines, all at one scale, centred. Same layout as the web app."""
+    boxes = [(min(xs), max(xs), min(ys), max(ys))
+             for xs, ys in (zip(*(pt for b in letter for pt in b["pts"])) for letter in word)]
+    width = sum(x1 - x0 for x0, x1, _, _ in boxes) + GAP * (len(word) - 1)
+    height = max(y1 - y0 for _, _, y0, y1 in boxes)
+    s = min(w / (width + 2 * GAP), h / (height + 2 * GAP))
+    left = x + (w - width * s) / 2
+    for letter, (x0, x1, y0, y1) in zip(word, boxes):
+        ox, oy = left - x0 * s, y + (h - (y1 - y0) * s) / 2 - y0 * s
+        for b in letter:
+            draw.polygon([(ox + px * s, oy + py * s) for px, py in b["pts"]], fill=FILL, outline="white",
+                         width=max(1, round(2 * s * GRID / SIZE)))
+        left += (x1 - x0 + GAP) * s
+
+
+def render_word(word):
+    img, layer = Image.new("RGBA", (WORD_W, WORD_H), "white"), Image.new("RGBA", (WORD_W, WORD_H), (0, 0, 0, 0))
+    word_layer(ImageDraw.Draw(layer), word, 0, 0, WORD_W, WORD_H)
+    return Image.alpha_composite(img, layer).convert("RGB")
+
+
+def word_sheet(words):
+    """The words in framed panels, WCOLS per row, as Jev sees them."""
+    size = (WCOLS * WCELL_W, -(-len(words) // WCOLS) * WCELL_H)
+    img, layer = Image.new("RGBA", size, "white"), Image.new("RGBA", size, (0, 0, 0, 0))
+    for i, word in enumerate(words):
+        x, y = i % WCOLS * WCELL_W, i // WCOLS * WCELL_H
+        word_layer(ImageDraw.Draw(layer), word, x + BORDER + 4, y + BORDER + 4, WCELL_W - 2 * BORDER - 8, WCELL_H - 2 * BORDER - 8)
+    img = Image.alpha_composite(img, layer)
+    for i in range(len(words)):
+        x, y = i % WCOLS * WCELL_W, i // WCOLS * WCELL_H
+        ImageDraw.Draw(img).rectangle([x, y, x + WCELL_W - 1, y + WCELL_H - 1], outline="black", width=BORDER)
+    return img.convert("RGB")
+
+
+def word_choice(text, n):
+    return {
+        "type": "choice",
+        "instructions": f"The image is a grid of {n} framed panels, {WCOLS} per row, numbered left to right, "
+        f"top to bottom. Which panel shows the word {text}?",
+        "criteria": {
+            str(i + 1): f"Panel {i + 1} (row {i // WCOLS + 1}, column {i % WCOLS + 1}) shows the word {text}."
+            for i in range(n)
+        },
+    }
+
+
+_letters = {}
+
+
+def canned_letters():
+    """The best canned drawing per letter and digit, from the web app's alphabet."""
+    if not _letters:
+        runs = json.loads(Path(PUBLIC["alphabet"]).read_text().split("PRESETS.alphabet = ")[1].rstrip().rstrip(";"))
+        for r in runs:
+            g = max(r["generations"], key=lambda g: g["p"])
+            _letters[r["object"][-1]] = [block(b["kind"], b["rot"], [tuple(pt) for pt in b["pts"]]) for b in g["candidates"][g["best"]]["shapes"]]
+    return _letters
+
+
+def evolve_word(client, mode, text, seed):
+    """Genetic run on a whole word: each child changes one letter or mixes letters of two parents."""
+    rng = random.Random(seed)
+    letters = canned_letters()
+    start = [letters[c] for c in text]
+
+    def mutate_word(word):
+        i = rng.randrange(len(word))
+        shapes, op = mutate(rng, word[i])
+        return {"word": word[:i] + [shapes] + word[i + 1 :], "op": op}
+
+    def child(cands, probs):
+        a, b = (cands[i]["word"] for i in rng.choices(range(len(cands)), weights=probs, k=2))
+        if rng.random() < P_CROSS and a is not b:
+            word = [l if rng.random() < 0.5 else m for l, m in zip(a, b)]
+            if any(l is not m for l, m in zip(word, a)) and any(l is not m for l, m in zip(word, b)):
+                return {"word": word, "op": "cross"}
+        return mutate_word(a)
+
+    strip = lambda word: [[{"kind": b["kind"], "rot": b["rot"], "pts": [[round(x, 2), round(y, 2)] for x, y in b["pts"]]}  # noqa: E731
+                            for b in letter] for letter in word]
+    cands = [{"word": start, "op": "seed"}] + [mutate_word(start) for _ in range(POP - 1)]
+    frames, top, top_p, cost, calls, stop = [], None, -1.0, 0.0, 0, "generations"
+    for _ in range(GENERATIONS):
+        rng.shuffle(cands)  # new panel positions every generation, against position bias
+        resp = decide(client, word_sheet([c["word"] for c in cands]), {"pick": word_choice(text, POP)})
+        cost += resp.get("usage", {}).get("cost", 0)
+        calls += 1
+        probs = [resp["answers"]["pick"]["probabilities"][str(i + 1)] for i in range(POP)]
+        best = max(range(POP), key=probs.__getitem__)
+        p = cands[best].get("p")  # known for words carried over
+        if p is None:
+            resp = decide(client, render_word(cands[best]["word"]), {"is": {"type": "noul", "instructions": f"The image shows the word {text}."}})
+            cost += resp.get("usage", {}).get("cost", 0)
+            p = resp["answers"]["is"]["noul"]
+            calls += 1
+        if p >= top_p:
+            top, top_p = cands[best]["word"], p
+        frames.append({"word": strip(cands[best]["word"]), "prob": probs[best], "p": p})
+        if p > TARGET:
+            stop = "target"
+            break
+        nxt = [{"word": top, "op": "best", "p": top_p}]
+        if cands[best]["word"] is not top:
+            nxt.append({"word": cands[best]["word"], "op": "elite", "p": p})
+        cands = nxt + [child(cands, probs) for _ in range(POP - len(nxt))]
+    print(f"{mode:11s} {text:8s} seed={seed:<3d} P={top_p:.2f}  after {len(frames)} generations  stop={stop}  {calls} calls  ${cost:.5f}")
+    render_word(top).save(Path("results") / mode / f"{text}_{seed}_{top_p:.2f}.png")
+    return {"object": text, "seed": seed, "model": resp.get("model", MODEL), "p": top_p, "stop": stop, "cost": cost,
+            "calls": calls, "frames": frames, "best": strip(top)}
+
+
 def main(mode="genetic", runs="5", *objects):
     (Path("results") / mode).mkdir(parents=True, exist_ok=True)
     jobs = [(mode, obj, seed) for obj in objects or SETS[mode] for seed in range(int(runs))]
     headers = {"Authorization": f"Bearer {os.environ['OPENROUTER_API_KEY']}"}
     with httpx.Client(headers=headers) as client, ThreadPoolExecutor(4) as pool:
-        presets = list(pool.map(lambda job: evolve(client, *job), jobs))
-    if mode in ("genetic", "alphabet") and not objects:  # the app's canned runs
+        presets = list(pool.map(lambda job: (evolve_word if mode == "word" else evolve)(client, *job), jobs))
+    if mode in PUBLIC and not objects:  # the app's canned runs
         shown = presets
-        if mode == "alphabet":  # only the best run per letter, to keep the page small
+        if mode in ("alphabet", "word"):  # only the best run per letter or word, to keep the page small
             Path(f"results/presets-{mode}-all.json").write_text(json.dumps(presets, separators=(",", ":")))
-            shown = [max((r for r in presets if r["object"] == o), key=lambda r: r["p"]) for o in LETTERS]
+            shown = [max((r for r in presets if r["object"] == o), key=lambda r: r["p"]) for o in SETS[mode]]
         Path(PUBLIC[mode]).write_text(
             "// Generated by run_examples.py; canned drawing runs.\nvar PRESETS = PRESETS || {};\n"
             f"PRESETS.{mode} = {json.dumps(shown, separators=(',', ':'))};\n"
