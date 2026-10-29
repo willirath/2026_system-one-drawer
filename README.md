@@ -12,14 +12,16 @@ least A/2. Slanted faces don't attach.
 The drawing evolves: 10 drawings at once. Each generation, Jev sees them side
 by side in a 5 x 2 grid of framed panels (shuffled every generation) and answers
 a `choice` question, "Which panel shows a(n) <object>?". Its probabilities are
-the fitness. The pick carries over unchanged. The other 9 are children of
-parents drawn in proportion to fitness: half by crossover (one parent's blocks
-on one side of a random vertical or horizontal cut, the other parent's on the
-other side, keeping the largest connected group), half by mutation (1-3 blocks
-added, or 30% of the time one block taken away while the rest stays connected).
-A `noul` question on the pick, "The image shows a(n) <object>.", tracks
-progress. A run stops at P > 0.66 or after 30 generations, and its result is the
-pick with the highest P.
+the fitness. For the pick, Jev also answers a `noul` question, "The image shows
+a(n) <object>."; that P tracks progress. Two drawings carry over unchanged: the
+pick, and the best drawing so far (highest P, replaced only when a pick scores
+at least as high), so the population never loses its best drawing. The others
+are children of parents drawn in proportion to fitness: half by crossover (one
+parent's blocks on one side of a random vertical or horizontal cut, the other
+parent's on the other side, keeping the largest connected group), half by
+mutation (1-3 blocks added, or 30% of the time one block taken away while the
+rest stays connected). A run stops at P > 0.66 or after 30 generations, and its
+result is the best drawing.
 
 ## Web app
 
@@ -41,8 +43,9 @@ uv run run_examples.py genetic-nox 8  # without crossover, for comparison
 uv run run_examples.py genetic 3 dog  # or: mode, runs per object, objects
 ```
 
-This writes `public/presets-genetic.js` (`results/presets-genetic-nox.json` for
-the comparison) and the final drawings to `results/<mode>/`.
+The default genetic runs go to `public/presets-genetic.js`; everything else goes
+to `results/presets-<mode>[-<objects>].json`. Final drawings land in
+`results/<mode>/`.
 
 ## Results (2026-10-29, `typesafe/jev-1.14`)
 
@@ -52,11 +55,11 @@ P went down, for up to 80 tries.
 
 | target | random walk        | genetic            | genetic, no crossover |
 |--------|--------------------|--------------------|-----------------------|
-| house  | 0.37-0.67 (1 of 8) | 0.63-0.81 (7 of 8) | 0.37-0.75 (4 of 8)    |
-| rocket | 0.46-0.67 (1 of 8) | 0.57-0.70 (5 of 8) | 0.58-0.73 (2 of 8)    |
-| boat   | 0.31-0.60 (0 of 8) | 0.43-0.59 (0 of 8) | 0.39-0.61 (0 of 8)    |
-| total  | 2 of 24            | 12 of 24           | 6 of 24               |
-| calls  | 1720, $0.051       | 872, $0.046        | 1072, $0.056          |
+| house  | 0.37-0.67 (1 of 8) | 0.63-0.79 (7 of 8) | 0.30-0.71 (5 of 8)    |
+| rocket | 0.46-0.67 (1 of 8) | 0.58-0.71 (4 of 8) | 0.55-0.74 (3 of 8)    |
+| boat   | 0.31-0.60 (0 of 8) | 0.47-0.65 (0 of 8) | 0.42-0.70 (2 of 8)    |
+| total  | 2 of 24            | 11 of 24           | 10 of 24              |
+| calls  | 1720, $0.051       | 897, $0.049        | 897, $0.049           |
 
 Can Jev tell the final drawings apart? [experiments/confusion.py](experiments/confusion.py)
 asks one `choice` question per final drawing: house, rocket, boat or something
@@ -64,21 +67,25 @@ else. Rows are what the genetic drawing was made for, columns Jev's answer:
 
 | genetic | house | rocket | boat | other |
 |---------|-------|--------|------|-------|
-| house   | 7     | 1      | 0    | 0     |
+| house   | 8     | 0      | 0    | 0     |
 | rocket  | 0     | 8      | 0    | 0     |
-| boat    | 1     | 3      | 3    | 1     |
+| boat    | 3     | 1      | 3    | 1     |
 
-That is 18 of 24 correct for genetic, against 13 of 24 without crossover and 12
-of 24 for the random walk. 24 random block drawings that never saw Jev
-come out as rocket 8 times and other 16 times, so rocket is Jev's default guess
-for tall junk and part of the rocket score comes free. House and boat never come
-out of random drawings.
+That is 19 of 24 correct, the same as without crossover (19 of 24) and well
+ahead of the random walk (12 of 24). Random block drawings that never saw Jev
+come out as rocket 9 times in 24 and other 15 times, so rocket is Jev's default
+guess for tall junk and part of the rocket score comes free. House and boat
+never come out of random drawings.
 
 Genetic runs end in small, legible icons: a roof on a block for a house, a tall
 bar with a pointed nose for a rocket, a flat hull with a triangle for a boat.
-Random-walk runs end as piles of 10-30 blocks. Crossover doubles the hit rate
-and raises the share of drawings Jev names correctly. Boat is the hard target:
-genetic boats look like boats (or fish) but stay below 0.6.
+Random-walk runs end as piles of 10-30 blocks. Boat is the hard target.
+
+An earlier version carried over only the current pick, so the population lost
+its best drawing whenever Jev picked a child instead (80% of generations). Back
+then crossover looked like it doubled the hit rate (12 against 6 of 24). With
+the best drawing kept, the two are level (11 against 10), so most of that gap
+came from losing good drawings, not from crossover itself.
 
 Jev's `choice` over the grid is often sharp (the pick gets 0.6-0.8) even when the
 pick's own `noul` is low, so ranking works better than judging in absolute terms.
@@ -102,6 +109,13 @@ selection is close to random. A choice call on the 10-panel grid costs about
   drew dense random polygon fields and asked Jev for a `box` around the target.
   The box mostly covers the whole canvas, doesn't depend on the target, and its
   readouts score no better than random boxes of the same size.
+- **Wording:** [experiments/house_wording.py](experiments/house_wording.py)
+  evolved houses for "simple house", "schematic house" and "drawing of a house"
+  and asked every final drawing all four wordings. "Schematic house" hits its own
+  target in 8 of 8 runs, but random junk already scores 0.43 on it (0.28 for
+  "house"), and its drawings score lowest on the shared questions. Drawings
+  evolved for plain "house" score highest on every wording, so the target stays
+  "house".
 - **Noise:** asking again about the same image barely moves P (by 0.005-0.035),
   but small changes to a drawing can move it a lot. Keeping a try whenever P
   rises therefore partly selects lucky drawings, which inflates random-walk

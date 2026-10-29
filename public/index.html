@@ -41,11 +41,12 @@
 base 2A and height A), turned in quarter turns and placed flat face to flat face. Slanted faces don't attach. TypeSafe's
 Jev (via OpenRouter), a fast decision model, is the only judge.</p>
 <p class="small">It evolves 10 drawings at once. Each generation, Jev sees them side by side in a grid and answers a
-<code>choice</code> question: "Which panel shows a(n) &lt;object&gt;?" Its probabilities are the fitness. The pick
-carries over unchanged. The other 9 are children of parents drawn by fitness: half by crossover (one parent's
-blocks on one side of a random cut, the other's on the other side), half by mutation (1-3 blocks added, or one
-taken away). A <code>noul</code> question on the pick ("The image shows a(n) &lt;object&gt;.") tracks progress.
-A run stops at P &gt; 0.66 or after 30 generations and shows the pick with the highest P.</p>
+<code>choice</code> question: "Which panel shows a(n) &lt;object&gt;?" Its probabilities are the fitness. For the
+pick, Jev also answers a <code>noul</code> question: "The image shows a(n) &lt;object&gt;." That P tracks progress.
+The pick and the best drawing so far (highest P) carry over unchanged. The others are children of parents drawn by
+fitness: half by crossover (one parent's blocks on one side of a random cut, the other's on the other side), half
+by mutation (1-3 blocks added, or one taken away). A run stops at P &gt; 0.66 or after 30 generations and shows
+the best drawing.</p>
 
 <canvas id="view" width="384" height="384"></canvas>
 <p id="caption"></p>
@@ -306,7 +307,7 @@ function choiceQuestion(obj, n) {
 
 let run = null, pos = 1, timer = null;
 const last = () => run.generations.length + 1;  // the final-drawing position
-const bestGen = (r) => r.generations.reduce((a, g) => g.p > a.p ? g : a);
+const bestGen = (r) => r.generations.reduce((a, g) => g.p >= a.p ? g : a);
 const finalShapes = (r) => ((g) => g.candidates[g.best].shapes)(bestGen(r));
 
 function render() {
@@ -334,7 +335,7 @@ function renderGeneration() {
     sh.font = "16px system-ui, sans-serif";
     sh.fillStyle = "#666";
     sh.textAlign = "right";
-    sh.fillText({ seed: "new", elite: "kept", add: "+", remove: "−", cross: "×" }[c.op], x + CELL - 14, y + 30);
+    sh.fillText({ seed: "new", best: "best", elite: "last pick", add: "+", remove: "−", cross: "×" }[c.op], x + CELL - 14, y + 30);
     sh.textAlign = "left";
   });
   clear(ctx);
@@ -447,7 +448,7 @@ async function evolveLive(key, obj, st) {
   const sheet = document.createElement("canvas");
   sheet.width = COLS * CELL;
   sheet.height = Math.ceil(POP / COLS) * CELL;
-  let cands = Array.from({ length: POP }, () => ({ shapes: randomBlocks([]), parent: null, op: "seed" })), p = -1;
+  let cands = Array.from({ length: POP }, () => ({ shapes: randomBlocks([]), parent: null, op: "seed" })), top = null;
   while (!run.stop) {
     for (let i = cands.length - 1; i > 0; i--) {  // new panel positions every generation, against position bias
       const j = randint(0, i);
@@ -459,19 +460,23 @@ async function evolveLive(key, obj, st) {
     tally(resp);
     const probs = cands.map((_, i) => resp.answers.pick.probabilities[i + 1] || 0);
     const best = probs.indexOf(Math.max(...probs));
-    if (cands[best].op !== "elite") {  // the elite's P is already known
+    let p = cands[best].p;  // known for drawings carried over
+    if (p === undefined) {
       st.textContent = `Generation ${run.generations.length + 1}: asking Jev about the pick…`;
       resp = await ask(key, cands[best].shapes, obj);
       tally(resp);
       p = resp.answers.is.noul;
     }
     run.generations.push({ candidates: cands, probs, best, p });
-    run.p = Math.max(run.p, p);
+    if (p >= run.p) { run.p = p; top = cands[best].shapes; }
     pos = run.generations.length;
     render();
     run.stop = cancelled ? "stopped" : p > TARGET ? "target" : run.generations.length >= GENERATIONS ? "generations" : "";
     if (run.stop) break;
-    const next = [{ shapes: cands[best].shapes, parent: best, op: "elite" }];
+    // the best so far and the current pick survive; children fill the rest
+    const anchor = cands.findIndex((c) => c.shapes === top);
+    const next = [{ shapes: top, parent: anchor, op: "best", p: run.p }];
+    if (best !== anchor) next.push({ shapes: cands[best].shapes, parent: best, op: "elite", p });
     while (next.length < POP) next.push(childOf(cands, probs));
     cands = next;
   }
